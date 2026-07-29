@@ -1,0 +1,16 @@
+# Claude Code local state (memory, settings, transcripts)
+.claude/
+
+# OS files
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# Editor/tooling
+.vscode/
+.idea/
+*.swp
+*~
+
+# Node (in case tooling is added later)
+node_modules/
