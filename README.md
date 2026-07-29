@@ -54,7 +54,7 @@ open  websheets.html      # macOS
 xdg-open websheets.html   # Linux
 ```
 
-> An internet connection is needed on first load to fetch the SheetJS library from a CDN (used for reading/writing `.xls`/`.xlsx`).
+> Fully **offline** — the SheetJS library is bundled inside `websheets.html`, so no internet connection is required.
 
 ## Keyboard shortcuts
 
@@ -83,7 +83,7 @@ xdg-open websheets.html   # Linux
 ## Tech
 
 - Plain HTML/CSS/JavaScript in one file — no framework, no bundler
-- [SheetJS (xlsx)](https://sheetjs.com) loaded from a CDN for spreadsheet file I/O
+- [SheetJS (xlsx)](https://sheetjs.com) bundled inline for spreadsheet file I/O (works offline)
 - [Dracula](https://draculatheme.com) color palette
 
 ## License
