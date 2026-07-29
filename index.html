@@ -172,7 +172,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
     overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
   }
   table.grid thead th {
-    background: var(--header-bg); color: var(--comment); position: sticky; top: 0; z-index: 3;
+    background: var(--header-bg); color: var(--comment); position: sticky; top: -1px; z-index: 3;
     font-weight: 600; text-align: center; user-select: none; cursor: pointer;
     min-width: 70px;
   }
@@ -196,13 +196,13 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
 
   /* ---------- Frozen header row (row 0) ---------- */
   table.grid tr.frozen-row td {
-    position: sticky; top: calc(var(--head-h, 24px) - 1px); z-index: 2;
+    position: sticky; top: calc(var(--head-h, 24px) - 2px); z-index: 2;
     background: var(--header-bg); color: var(--green); font-weight: 600;
   }
   table.grid tr.frozen-row td.num { color: var(--green); }        /* keep header text, not cyan numbers */
   table.grid tr.frozen-row td.in-range { color: var(--fg); }      /* selected header cells stay readable */
   table.grid tr.frozen-row th.rowhead {
-    position: sticky; top: calc(var(--head-h, 24px) - 1px); left: 0; z-index: 4;
+    position: sticky; top: calc(var(--head-h, 24px) - 2px); left: 0; z-index: 4;
     background: var(--header-active);
   }
   table.grid td .cell-input {
