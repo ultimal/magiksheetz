@@ -1,6 +1,6 @@
 # 📊 WebSheets
 
-A fast, self-contained spreadsheet application that runs entirely in your browser from a **single HTML file** — no build step, no server, no install. Open `websheets.html` and start working.
+A fast, self-contained spreadsheet application that runs entirely in your browser from a **single HTML file** — no build step, no server, no install. Open `index.html` and start working.
 
 ![WebSheets screenshot](screenshot.png)
 
@@ -48,13 +48,13 @@ Just open the file — that's it:
 # clone, then open in your browser
 git clone git@github.com:ultimal/websheets.git
 cd websheets
-# open websheets.html (double-click, or:)
-start websheets.html      # Windows
-open  websheets.html      # macOS
-xdg-open websheets.html   # Linux
+# open index.html (double-click, or:)
+start index.html      # Windows
+open  index.html      # macOS
+xdg-open index.html   # Linux
 ```
 
-> Fully **offline** — the SheetJS library is bundled inside `websheets.html`, so no internet connection is required.
+> Fully **offline** — the SheetJS library is bundled inside `index.html`, so no internet connection is required.
 
 ## Keyboard shortcuts
 
