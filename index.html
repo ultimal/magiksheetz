@@ -131,12 +131,15 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
 
   /* ---------- Help / shortcuts panel ---------- */
   .help-pop {
-    position: fixed; z-index: 1200; display: none;
+    position: fixed; z-index: 1200; display: none; flex-direction: column;
     background: var(--panel); border: 1px solid var(--border); border-radius: 8px;
     box-shadow: 0 12px 30px rgba(0,0,0,0.55); padding: 12px 14px 14px;
-    width: 380px; max-height: 74vh; overflow-y: auto; font-size: 12px; color: var(--fg);
+    width: 760px; max-width: 94vw; max-height: 80vh; overflow: hidden; font-size: 12px; color: var(--fg);
   }
-  .help-pop .help-title { font-weight: 700; color: var(--purple); margin-bottom: 8px; font-size: 13px; }
+  .help-pop .help-title { font-weight: 700; color: var(--purple); margin-bottom: 8px; font-size: 13px; flex: 0 0 auto; }
+  .help-pop .help-body { display: flex; gap: 20px; overflow: hidden; min-height: 0; }
+  .help-pop .help-col { flex: 1 1 0; min-width: 0; overflow-y: auto; padding-right: 6px; }
+  .help-pop .help-colhead { font-weight: 700; color: var(--fg); font-size: 12.5px; margin-bottom: 2px; }
   .help-pop h4 { margin: 12px 0 4px; color: var(--green); font-size: 12px; border-bottom: 1px solid var(--border); padding-bottom: 3px; }
   .help-pop .krow { display: flex; justify-content: space-between; align-items: baseline; gap: 14px; padding: 3px 0; }
   .help-pop .kdesc { color: var(--fg); text-align: right; flex: 1; }
@@ -145,6 +148,14 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
     padding: 1px 6px; font-family: Consolas, "Courier New", monospace; font-size: 11px;
     color: var(--cyan); white-space: nowrap;
   }
+  .help-pop .fnnote { color: var(--comment); font-size: 11px; line-height: 1.5; margin: 2px 0 4px; }
+  .help-pop .fnnote code, .help-pop .fnrow code {
+    font-family: Consolas, "Courier New", monospace; color: var(--cyan); background: var(--bg-dark);
+    border-radius: 3px; padding: 0 3px;
+  }
+  .help-pop .fnrow { padding: 4px 0; border-bottom: 1px dotted var(--border); }
+  .help-pop .fnrow code { display: inline-block; font-size: 11.5px; margin-bottom: 2px; }
+  .help-pop .fnrow .fndesc { display: block; color: var(--comment); font-size: 11px; }
   .toolbar2 .colorbtn { flex-direction: column; padding: 2px 6px; font-size: 12px; gap: 1px; }
   .toolbar2 .colorbtn .cb-icon { line-height: 1; }
   .toolbar2 .colorbtn .cb-swatch {
@@ -1968,6 +1979,7 @@ const HELP_GROUPS = [
     ['Ctrl+Home / Ctrl+End', 'Go to A1 / last used cell'],
     ['Home', 'Start of current row'],
     ['Shift+Arrows', 'Extend selection'],
+    ['Ctrl+A', 'Select all cells'],
     ['Ctrl+Space', 'Select whole column'],
     ['Shift+Space', 'Select whole row'],
     ['Name box + Enter', 'Jump to a cell (e.g. B12)'],
@@ -2000,12 +2012,65 @@ const HELP_GROUPS = [
     ['▾ on the header row', 'Filter / sort a column'],
   ]],
 ];
+// Every function the formula engine supports, grouped, with syntax + what it does.
+const FORMULA_FUNCS = [
+  ['Math & statistics', [
+    ['SUM(num1, …)', 'Add all numbers / ranges'],
+    ['AVERAGE(num1, …)', 'Mean of the numbers (also AVG)'],
+    ['MIN(num1, …)', 'Smallest value'],
+    ['MAX(num1, …)', 'Largest value'],
+    ['COUNT(range)', 'How many values are numbers'],
+    ['COUNTA(range)', 'How many cells are non-empty'],
+    ['PRODUCT(num1, …)', 'Multiply all numbers'],
+    ['MEDIAN(range)', 'Middle value'],
+    ['STDEV(range)', 'Sample standard deviation'],
+    ['ROUND(num, digits)', 'Round to given decimals'],
+    ['ROUNDUP(num, digits)', 'Round up (away from zero)'],
+    ['ROUNDDOWN(num, digits)', 'Round down (toward zero)'],
+    ['ABS(num)', 'Absolute value'],
+    ['SQRT(num)', 'Square root'],
+    ['POWER(base, exp)', 'base raised to exp'],
+    ['MOD(a, b)', 'Remainder of a ÷ b'],
+    ['INT(num)', 'Round down to a whole number'],
+    ['PI()', '3.14159…'],
+  ]],
+  ['Logic', [
+    ['IF(test, ifTrue, ifFalse)', 'Pick a value based on a condition'],
+    ['AND(a, b, …)', 'TRUE only if all are true'],
+    ['OR(a, b, …)', 'TRUE if any is true'],
+    ['NOT(a)', 'Reverses TRUE / FALSE'],
+    ['COUNTIF(range, criteria)', 'Count cells meeting a test, e.g. ">5"'],
+    ['SUMIF(range, criteria, [sumRange])', 'Sum cells meeting a test'],
+  ]],
+  ['Text', [
+    ['CONCAT(a, b, …)', 'Join text (also CONCATENATE, or &)'],
+    ['LEN(text)', 'Number of characters'],
+    ['UPPER(text)', 'UPPERCASE the text'],
+    ['LOWER(text)', 'lowercase the text'],
+    ['TRIM(text)', 'Remove leading/trailing spaces'],
+    ['LEFT(text, n)', 'First n characters'],
+    ['RIGHT(text, n)', 'Last n characters'],
+    ['MID(text, start, len)', 'len chars starting at position start'],
+  ]],
+  ['Date & time', [
+    ['NOW()', 'Current date and time'],
+    ['TODAY()', 'Current date'],
+  ]],
+];
 const helpPop = document.createElement('div');
 helpPop.className = 'help-pop';
-helpPop.innerHTML = '<div class="help-title">⌨ Keyboard &amp; mouse shortcuts</div>' +
+const shortcutHtml = '<div class="help-colhead">⌨ Keyboard &amp; mouse</div>' +
   HELP_GROUPS.map(([title, rows]) =>
     `<h4>${title}</h4>` + rows.map(([k, d]) => `<div class="krow"><kbd>${k}</kbd><span class="kdesc">${d}</span></div>`).join('')
   ).join('');
+const funcHtml = '<div class="help-colhead">🔣 Formula functions</div>' +
+  '<div class="fnnote">Start a cell with <code>=</code>. Use cell refs (<code>A1</code>), ranges (<code>A1:B5</code>) and operators <code>+ − * / ^ % &amp; = &lt; &gt; &lt;= &gt;= &lt;&gt;</code>.</div>' +
+  FORMULA_FUNCS.map(([cat, rows]) =>
+    `<h4>${cat}</h4>` + rows.map(([sig, d]) => `<div class="fnrow"><code>${sig}</code><span class="fndesc">${d}</span></div>`).join('')
+  ).join('');
+helpPop.innerHTML =
+  '<div class="help-title">Help — shortcuts &amp; formula functions</div>' +
+  `<div class="help-body"><div class="help-col">${shortcutHtml}</div><div class="help-col">${funcHtml}</div></div>`;
 document.body.appendChild(helpPop);
 const btnHelp = document.getElementById('btnHelp');
 let helpTimer = null;
