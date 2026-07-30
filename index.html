@@ -2076,7 +2076,7 @@ const btnHelp = document.getElementById('btnHelp');
 let helpTimer = null;
 function showHelp() {
   clearTimeout(helpTimer);
-  helpPop.style.display = 'block';
+  helpPop.style.display = 'flex';   // flex column so the inner columns get a bounded, scrollable height
   const r = btnHelp.getBoundingClientRect(), w = helpPop.offsetWidth;
   helpPop.style.left = Math.max(4, r.right - w) + 'px';
   helpPop.style.top = (r.bottom + 4) + 'px';
@@ -2084,7 +2084,7 @@ function showHelp() {
 function hideHelpSoon() { helpTimer = setTimeout(() => { helpPop.style.display = 'none'; }, 180); }
 btnHelp.addEventListener('mouseenter', showHelp);
 btnHelp.addEventListener('mouseleave', hideHelpSoon);
-btnHelp.addEventListener('click', () => { helpPop.style.display === 'block' ? hideHelpSoon() : showHelp(); });
+btnHelp.addEventListener('click', () => { helpPop.style.display !== 'none' ? hideHelpSoon() : showHelp(); });
 helpPop.addEventListener('mouseenter', () => clearTimeout(helpTimer));
 helpPop.addEventListener('mouseleave', hideHelpSoon);
 document.addEventListener('keydown', e => { if (e.key === 'Escape') helpPop.style.display = 'none'; });
