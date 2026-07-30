@@ -419,6 +419,9 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
   <button class="tb" id="btnSortAsc" title="Sort selected column ascending">▲</button>
   <button class="tb" id="btnSortDesc" title="Sort selected column descending">▼</button>
   <span class="tsep"></span>
+  <button class="tb" id="btnExportMap" title="Export lookup column mappings to a file (reuse with similar workbooks)">🔗↧</button>
+  <label class="tb" id="btnImportMap" title="Import lookup column mappings from a file">🔗↥<input type="file" id="mapInput" accept=".json,application/json"></label>
+  <span class="tsep"></span>
   <button class="tb" id="btnHelp" title="Keyboard shortcuts" style="margin-left:auto;font-weight:700">?</button>
 </div>
 
@@ -2024,6 +2027,69 @@ function openLookupDialog(col) {
   };
   sheetSel.focus();
 }
+
+/* =====================================================================
+   EXPORT / IMPORT LOOKUP COLUMN MAPPINGS
+   ===================================================================== */
+// Records each lookup by sheet + column HEADER name (with an index fallback) so the
+// mappings re-apply to a similar workbook even if column positions differ slightly.
+function exportMappings() {
+  const mappings = [];
+  for (const sheet of workbook.sheets) {
+    const lk = sheet.lookups || {};
+    for (const colStr in lk) {
+      const col = +colStr, m = lk[colStr], src = sheetByName(m.sheet);
+      mappings.push({
+        hostSheet: sheet.name,
+        hostColumn: getRawOf(sheet, 0, col),
+        hostColIndex: col,
+        sourceSheet: m.sheet,
+        sourceColumn: src ? getRawOf(src, 0, m.keyCol) : '',
+        sourceColIndex: m.keyCol,
+      });
+    }
+  }
+  if (!mappings.length) { alert('No lookup column mappings to export yet.\nRight-click a column header → “Look up from another sheet…” to create one.'); return; }
+  const blob = new Blob([JSON.stringify({ type: 'websheets-column-mappings', version: 1, mappings }, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const base = currentFileName.replace(/\.(xlsx|xls|csv)$/i, '') || 'workbook';
+  const a = document.createElement('a');
+  a.href = url; a.download = base + '.mappings.json';
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+function importMappings(text) {
+  let data;
+  try { data = JSON.parse(text); } catch (e) { alert('That file is not valid JSON.'); return; }
+  const list = data && data.mappings;
+  if (!Array.isArray(list)) { alert('This file does not contain WebSheets column mappings.'); return; }
+  const findCol = (sheet, header, fallbackIdx) => {
+    if (header != null && header !== '') { for (let c = 0; c < sheet.numCols; c++) if (getRawOf(sheet, 0, c) === header) return c; }
+    return (Number.isInteger(fallbackIdx) && fallbackIdx >= 0 && fallbackIdx < sheet.numCols) ? fallbackIdx : -1;
+  };
+  let applied = 0, skipped = 0;
+  pushUndo();
+  for (const m of list) {
+    const host = sheetByName(m.hostSheet), src = sheetByName(m.sourceSheet);
+    if (!host || !src) { skipped++; continue; }
+    const hostCol = findCol(host, m.hostColumn, m.hostColIndex);
+    const keyCol = findCol(src, m.sourceColumn, m.sourceColIndex);
+    if (hostCol < 0 || keyCol < 0) { skipped++; continue; }
+    if (!host.lookups) host.lookups = {};
+    host.lookups[hostCol] = { sheet: src.name, keyCol };
+    applied++;
+  }
+  render();
+  alert(`Imported ${applied} mapping${applied === 1 ? '' : 's'}` + (skipped ? `; skipped ${skipped} (sheet or column not found in this workbook).` : '.'));
+}
+document.getElementById('btnExportMap').onclick = exportMappings;
+document.getElementById('mapInput').addEventListener('change', e => {
+  const file = e.target.files[0]; if (!file) return;
+  const reader = new FileReader();
+  reader.onload = ev => importMappings(ev.target.result);
+  reader.readAsText(file);
+  e.target.value = '';
+});
 
 /* =====================================================================
    INIT (starts with a single empty sheet)

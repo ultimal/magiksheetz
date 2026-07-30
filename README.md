@@ -32,6 +32,7 @@ A fast, self-contained spreadsheet application that runs entirely in your browse
 - Insert / delete rows and columns
 - Resize rows and columns by dragging header edges
 - **Cross-sheet lookup / drill-down** — right-click a column to match its values against a column in another sheet; a **+** on each cell inline-expands the matching rows from that sheet
+- **Export / import lookup mappings** — save the workbook's lookup configuration to a JSON file (by sheet + column header name) and re-apply it to a similar workbook
 
 ### UX
 - **Frozen, auto-styled header row** and sticky column/row headers
