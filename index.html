@@ -309,6 +309,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
   table.grid tr.detail-row td.detail-title { color: var(--fg); background: var(--current); padding-left: 8px; }
   table.grid tr.detail-row td.detail-title b { color: var(--green); }
   table.grid tr.detail-row td.detail-empty { color: var(--comment); font-style: italic; padding-left: 8px; }
+  table.grid tr.detail-row td.detail-colhead { background: var(--current); color: var(--green); font-weight: 600; }
 
   /* ---------- Modal dialog (lookup setup) ---------- */
   .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.45); z-index: 1300; display: flex; align-items: center; justify-content: center; }
@@ -724,7 +725,10 @@ function buildVisualRows(sh) {
       list.push({ kind: 'detailhead', r, col: exCol, h: 22, top: acc }); acc += 22;
       const matches = lookupMatches(sh, r, exCol);
       if (matches.length === 0) { list.push({ kind: 'detailempty', r, h: 22, top: acc }); acc += 22; }
-      else for (const sr of matches) { list.push({ kind: 'detail', r, col: exCol, srcRow: sr, h: 22, top: acc }); acc += 22; }
+      else {
+        list.push({ kind: 'detailcols', r, col: exCol, h: 22, top: acc }); acc += 22;   // source column headers
+        for (const sr of matches) { list.push({ kind: 'detail', r, col: exCol, srcRow: sr, h: 22, top: acc }); acc += 22; }
+      }
     }
   }
   return { list, total: acc, rowTop };
@@ -800,13 +804,15 @@ function render() {
     if (item.kind === 'detailempty') {
       return `<tr class="detail-row" style="height:${item.h}px"><th class="detail-rh" style="height:${item.h}px">↳</th><td class="detail-cell detail-empty" colspan="${numCols}" style="height:${item.h}px">No matching rows</td></tr>`;
     }
-    // a matched data row: show the source row's cells (raw) across the grid columns
+    // column-header row (source sheet's top row) or a matched data row
     const nsrc = src ? usedCols(src) : 0;
-    let s = `<tr class="detail-row" style="height:${item.h}px"><th class="detail-rh" style="height:${item.h}px">↳</th>`;
+    const isCols = item.kind === 'detailcols';
+    const srcR = isCols ? 0 : item.srcRow;
+    let s = `<tr class="detail-row${isCols ? ' detail-colrow' : ''}" style="height:${item.h}px"><th class="detail-rh" style="height:${item.h}px">↳</th>`;
     for (let c = 0; c < numCols; c++) {
       const w = colWidths[c] || 90;
-      const v = c < nsrc ? getRawOf(src, item.srcRow, c) : '';
-      const cls = 'detail-cell' + (c === 0 ? ' detail-first' : '');
+      const v = c < nsrc ? getRawOf(src, srcR, c) : '';
+      const cls = 'detail-cell' + (isCols ? ' detail-colhead' : '') + (c === 0 ? ' detail-first' : '');
       s += `<td class="${cls}" style="width:${w}px;min-width:${w}px;height:${item.h}px">${escapeHtml(v)}</td>`;
     }
     return s + '</tr>';
