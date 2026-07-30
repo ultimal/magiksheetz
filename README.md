@@ -16,7 +16,7 @@ A fast, self-contained spreadsheet application that runs entirely in your browse
 - A **formula engine** supporting cell references (`A1`), ranges (`A1:B5`), arithmetic, comparisons, string concatenation, and functions:
   `SUM, AVERAGE, MIN, MAX, COUNT, COUNTA, PRODUCT, MEDIAN, STDEV, ROUND(UP/DOWN), ABS, SQRT, POWER, MOD, INT, IF, AND, OR, NOT, CONCAT, LEN, UPPER, LOWER, TRIM, LEFT, RIGHT, MID, COUNTIF, SUMIF, NOW, TODAY, PI`
 - Circular-reference detection and error reporting (`#CIRC!`, `#ERROR!`, `#NUM!`)
-- Copy / Cut / Paste (including tab-separated data to/from other apps)
+- Copy / Cut / Paste — copying a formula and pasting **rewrites relative references** (A1 → B2…) like Excel, while `$`-locked parts stay fixed; tab-separated data still works to/from other apps
 - Undo / Redo (up to 100 steps)
 
 ### Formatting

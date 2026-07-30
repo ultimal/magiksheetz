@@ -1272,7 +1272,7 @@ gridWrap.addEventListener('keydown', e => {
   if (ctrl && k.toLowerCase() === 'u') { e.preventDefault(); toggleFmt('u'); return; }
   if (ctrl && k.toLowerCase() === 'a') { e.preventDefault(); selectAll(); return; }
   if (ctrl && k.toLowerCase() === 'c') { copySelection(); return; }
-  if (ctrl && k.toLowerCase() === 'x') { copySelection(); clearSelection(); return; }
+  if (ctrl && k.toLowerCase() === 'x') { copySelection(true); clearSelection(); return; }
   if (ctrl && k.toLowerCase() === 'v') return;
   if (ctrl && k === 'Home') {                    // Ctrl+Home -> jump to A1 (top-left)
     e.preventDefault(); selectCell(0, 0, e.shiftKey); return;
@@ -1519,26 +1519,81 @@ formulaInput.addEventListener('blur', () => { if (editing && document.activeElem
 /* =====================================================================
    CLIPBOARD
    ===================================================================== */
-function copySelection() {
+let clip = null;   // internal copy buffer: { r0, c0, cells:[[raw]], text, cut }
+
+// Shift the relative cell references in a formula body by (dr rows, dc cols).
+// $-locked column/row parts and text in quotes are left unchanged. Out-of-range -> #REF!.
+function shiftRefs(body, dr, dc) {
+  const strs = [];
+  let masked = body.replace(/"(?:[^"\\]|\\.)*"/g, m => { strs.push(m); return '' + (strs.length - 1) + ''; });
+  masked = masked.replace(/(\$?)([A-Za-z]{1,3})(\$?)(\d+)/g, (m, cAbs, colL, rAbs, rowN) => {
+    let col = colFromName(colL), row = parseInt(rowN, 10) - 1;
+    if (!cAbs) col += dc;
+    if (!rAbs) row += dr;
+    if (col < 0 || row < 0) return '#REF!';
+    return cAbs + colName(col) + rAbs + (row + 1);
+  });
+  return masked.replace(/(\d+)/g, (m, i) => strs[+i]);
+}
+
+function copySelection(isCut) {
   const r0 = Math.min(sel.r, rangeEnd.r), r1 = Math.max(sel.r, rangeEnd.r);
   const c0 = Math.min(sel.c, rangeEnd.c), c1 = Math.max(sel.c, rangeEnd.c);
-  let rows = [];
-  for (let r = r0; r <= r1; r++) { let row = []; for (let c = c0; c <= c1; c++) row.push(getComputed(r, c)); rows.push(row.join('\t')); }
-  navigator.clipboard?.writeText(rows.join('\n')).catch(() => {});
+  const cells = [], rowsText = [];
+  for (let r = r0; r <= r1; r++) {
+    const rawRow = [], txtRow = [];
+    for (let c = c0; c <= c1; c++) { rawRow.push(getRaw(r, c)); txtRow.push(getComputed(r, c)); }
+    cells.push(rawRow); rowsText.push(txtRow.join('\t'));
+  }
+  const text = rowsText.join('\n');
+  clip = { r0, c0, cells, text, cut: !!isCut };          // keep raw formulas for in-app paste
+  navigator.clipboard?.writeText(text).catch(() => {});  // computed values for external apps
 }
-document.addEventListener('paste', e => {
-  if (editing) return;
-  if (document.activeElement === formulaInput || document.activeElement === nameBox) return;
-  const text = (e.clipboardData || window.clipboardData).getData('text'); if (!text) return;
-  e.preventDefault(); pushUndo();
+
+// Paste the internal buffer, rewriting relative refs by (dr,dc). A cut moves refs unchanged.
+function pasteBlock(cells, dr, dc) {
+  pushUndo();
+  cells.forEach((rawRow, i) => rawRow.forEach((raw, j) => {
+    const r = sel.r + i, c = sel.c + j;
+    if (r >= S().numRows) S().numRows = r + 1;
+    if (c >= S().numCols) S().numCols = c + 1;
+    let val = raw;
+    if (raw && raw[0] === '=' && (dr || dc)) val = '=' + shiftRefs(raw.slice(1), dr, dc);
+    setRaw(r, c, val);
+  }));
+  render();
+}
+// Paste TSV text as literal values (content copied from another app).
+function pasteText(text) {
+  pushUndo();
   const rows = text.replace(/\r/g, '').split('\n'); if (rows.length && rows[rows.length - 1] === '') rows.pop();
-  rows.forEach((line, dr) => line.split('\t').forEach((val, dc) => {
-    const r = sel.r + dr, c = sel.c + dc;
+  rows.forEach((line, i) => line.split('\t').forEach((val, j) => {
+    const r = sel.r + i, c = sel.c + j;
     if (r >= S().numRows) S().numRows = r + 1;
     if (c >= S().numCols) S().numCols = c + 1;
     setRaw(r, c, val);
   }));
   render();
+}
+// Use the formula-aware buffer when the OS clipboard still holds exactly what we copied;
+// otherwise paste the external text literally.
+function doPaste(text) {
+  if (!text) return;
+  if (clip && text === clip.text) {
+    const dr = clip.cut ? 0 : sel.r - clip.r0, dc = clip.cut ? 0 : sel.c - clip.c0;
+    pasteBlock(clip.cells, dr, dc);
+  } else {
+    pasteText(text);
+  }
+  focusGrid();
+}
+
+document.addEventListener('paste', e => {
+  if (editing) return;
+  if (document.activeElement === formulaInput || document.activeElement === nameBox) return;
+  const text = (e.clipboardData || window.clipboardData).getData('text'); if (!text) return;
+  e.preventDefault();
+  doPaste(text);
 });
 
 /* =====================================================================
@@ -1844,22 +1899,11 @@ document.getElementById('btnAddSheet').onclick = addSheet;
 
 /* clipboard buttons */
 document.getElementById('btnCopy').onclick = () => { copySelection(); focusGrid(); };
-document.getElementById('btnCut').onclick = () => { copySelection(); clearSelection(); focusGrid(); };
+document.getElementById('btnCut').onclick = () => { copySelection(true); clearSelection(); focusGrid(); };
 document.getElementById('btnPaste').onclick = pasteFromClipboard;
 async function pasteFromClipboard() {
-  try {
-    const text = await navigator.clipboard.readText();
-    if (!text) return;
-    pushUndo();
-    const rows = text.replace(/\r/g, '').split('\n'); if (rows.length && rows[rows.length - 1] === '') rows.pop();
-    rows.forEach((line, dr) => line.split('\t').forEach((val, dc) => {
-      const r = sel.r + dr, c = sel.c + dc;
-      if (r >= S().numRows) S().numRows = r + 1;
-      if (c >= S().numCols) S().numCols = c + 1;
-      setRaw(r, c, val);
-    }));
-    render(); focusGrid();
-  } catch (e) { alert('Clipboard access was blocked. Use Ctrl+V instead.'); }
+  try { doPaste(await navigator.clipboard.readText()); }
+  catch (e) { alert('Clipboard access was blocked. Use Ctrl+V instead.'); }
 }
 
 /* =====================================================================
@@ -1897,7 +1941,7 @@ gridWrap.addEventListener('scroll', hideMenu);
 window.addEventListener('blur', hideMenu);
 
 const clipItems = () => ([
-  { label: '✂ Cut', shortcut: 'Ctrl+X', fn: () => { copySelection(); clearSelection(); } },
+  { label: '✂ Cut', shortcut: 'Ctrl+X', fn: () => { copySelection(true); clearSelection(); } },
   { label: '⧉ Copy', shortcut: 'Ctrl+C', fn: () => copySelection() },
   { label: '📋 Paste', shortcut: 'Ctrl+V', fn: pasteFromClipboard },
 ]);
