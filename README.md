@@ -31,6 +31,7 @@ A fast, self-contained spreadsheet application that runs entirely in your browse
 - **AutoFilter** on the header row — per-column dropdowns with search, value checklists, and sort
 - Insert / delete rows and columns
 - Resize rows and columns by dragging header edges
+- **Cross-sheet lookup / drill-down** — right-click a column to match its values against a column in another sheet; a **+** on each cell inline-expands the matching rows from that sheet
 
 ### UX
 - **Frozen, auto-styled header row** and sticky column/row headers

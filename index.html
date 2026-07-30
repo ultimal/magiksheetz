@@ -286,6 +286,44 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
   .filter-btn:hover { background: var(--comment); color: var(--fg); }
   .filter-btn.active { color: var(--green); border-color: var(--green); }
 
+  /* ---------- Cross-sheet lookup (+ / detail rows) ---------- */
+  table.grid td.lookup-cell { padding-right: 18px; }
+  .lookup-btn {
+    position: absolute; right: 2px; top: 50%; transform: translateY(-50%);
+    width: 15px; height: 15px; line-height: 13px; text-align: center;
+    background: var(--current); border: 1px solid #565968; border-radius: 3px;
+    font-size: 12px; font-weight: 700; color: var(--green); cursor: pointer;
+  }
+  .lookup-btn:hover { background: var(--green); color: var(--bg-dark); }
+  .lookup-btn.on { background: var(--green); color: var(--bg-dark); border-color: var(--green); }
+  table.grid tr.detail-row td.detail-cell {
+    background: var(--bg-dark); color: var(--comment); font-size: 12px;
+    border-right: 1px solid var(--border); border-bottom: 1px solid var(--border);
+  }
+  table.grid tr.detail-row th.detail-rh {
+    position: sticky; left: 0; z-index: 2; width: 42px; min-width: 42px;
+    background: var(--bg-darker); color: var(--purple); text-align: center;
+    border-right: 1px solid var(--border); border-bottom: 1px solid var(--border); border-left: 1px solid var(--border);
+  }
+  table.grid tr.detail-row td.detail-first { padding-left: 14px; }
+  table.grid tr.detail-row td.detail-title { color: var(--fg); background: var(--current); padding-left: 8px; }
+  table.grid tr.detail-row td.detail-title b { color: var(--green); }
+  table.grid tr.detail-row td.detail-empty { color: var(--comment); font-style: italic; padding-left: 8px; }
+
+  /* ---------- Modal dialog (lookup setup) ---------- */
+  .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.45); z-index: 1300; display: flex; align-items: center; justify-content: center; }
+  .modal { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; box-shadow: 0 16px 40px rgba(0,0,0,0.6); width: 380px; padding: 16px; color: var(--fg); font-size: 13px; }
+  .modal h3 { margin: 0 0 14px; color: var(--purple); font-size: 14px; }
+  .modal .mrow { display: flex; flex-direction: column; gap: 5px; margin-bottom: 12px; }
+  .modal .mrow label { color: var(--comment); font-size: 12px; }
+  .modal select { border: 1px solid #565968; background: var(--current); color: var(--fg); border-radius: 4px; padding: 6px 8px; font-size: 13px; }
+  .modal .mhint { color: var(--comment); font-size: 11.5px; margin: -4px 0 14px; line-height: 1.4; }
+  .modal .mfoot { display: flex; justify-content: flex-end; gap: 8px; }
+  .modal .mfoot button { border: 1px solid #565968; background: var(--current); color: var(--fg); border-radius: 4px; padding: 6px 14px; cursor: pointer; font-size: 12px; }
+  .modal .mfoot button:hover { background: var(--comment); }
+  .modal .mfoot button.primary { background: var(--purple); border-color: var(--purple); color: var(--bg-dark); font-weight: 600; }
+  .modal .mfoot button.primary:hover { background: var(--pink); }
+
   .filter-pop {
     position: fixed; z-index: 1100; background: var(--panel);
     border: 1px solid var(--border); border-radius: 6px;
@@ -415,7 +453,7 @@ const HEADER_H = 24, ROWHEAD_W = 42;   // column-header height / row-header widt
 let _lastHeadH = 0;                    // cached column-header height for the frozen-row sticky offset
 
 function newSheet(name) {
-  return { name, data: {}, fmt: {}, colWidths: {}, rowHeights: {}, filters: {}, numRows: MIN_ROWS, numCols: MIN_COLS, sortState: { col: null, dir: 0 } };
+  return { name, data: {}, fmt: {}, colWidths: {}, rowHeights: {}, filters: {}, lookups: {}, expanded: {}, numRows: MIN_ROWS, numCols: MIN_COLS, sortState: { col: null, dir: 0 } };
 }
 let workbook = { sheets: [newSheet('Sheet1')], active: 0 };
 const S = () => workbook.sheets[workbook.active];
@@ -649,6 +687,50 @@ function formatCell(val, f) {
     default: return val;
   }
 }
+/* =====================================================================
+   CROSS-SHEET LOOKUP / INLINE DETAIL EXPANSION
+   ===================================================================== */
+function sheetByName(name) { return workbook.sheets.find(s => s.name === name); }
+function getRawOf(sheet, r, c) { const cell = sheet.data[key(r, c)]; return cell ? cell.raw : ''; }
+function usedCols(sheet) { let mc = 0; for (const kk in sheet.data) { const c = +kk.split(',')[1]; if (c + 1 > mc) mc = c + 1; } return mc; }
+function usedRows(sheet) { let mr = 0; for (const kk in sheet.data) { const r = +kk.split(',')[0]; if (r > mr) mr = r; } return mr; }
+// Evaluate a cell in the context of an arbitrary sheet (so formulas resolve correctly).
+function computedIn(sheet, r, c) { const prev = workbook.active; workbook.active = workbook.sheets.indexOf(sheet); try { return getComputed(r, c); } finally { workbook.active = prev; } }
+// Rows in the lookup source whose key column equals the value of cell (r, col) in `sh`.
+function lookupMatches(sh, r, col) {
+  const lk = sh.lookups && sh.lookups[col];
+  if (!lk) return [];
+  const src = sheetByName(lk.sheet);
+  if (!src) return [];
+  const val = computedIn(sh, r, col);
+  if (val === '' || val == null) return [];
+  const maxR = usedRows(src), out = [];
+  for (let sr = 1; sr <= maxR; sr++) { if (computedIn(src, sr, lk.keyCol) === val) out.push(sr); }
+  return out;
+}
+// Build the ordered list of visual rows for a sheet: data rows plus, under any expanded
+// cell, a detail header + the matching rows from the lookup source. `top` is the cumulative
+// offset within the region below the frozen header row; `rowTop[r]` maps data rows to it.
+function buildVisualRows(sh) {
+  const rowHeights = sh.rowHeights || {};
+  const list = [], rowTop = {}; let acc = 0;
+  for (let r = 1; r < sh.numRows; r++) {
+    if (isRowHidden(r)) continue;
+    const h = rowHeights[r] || 22;
+    rowTop[r] = acc;
+    list.push({ kind: 'data', r, h, top: acc }); acc += h;
+    const exCol = sh.expanded ? sh.expanded[r] : undefined;
+    if (exCol != null && sh.lookups && sh.lookups[exCol] && sheetByName(sh.lookups[exCol].sheet)) {
+      list.push({ kind: 'detailhead', r, col: exCol, h: 22, top: acc }); acc += 22;
+      const matches = lookupMatches(sh, r, exCol);
+      if (matches.length === 0) { list.push({ kind: 'detailempty', r, h: 22, top: acc }); acc += 22; }
+      else for (const sr of matches) { list.push({ kind: 'detail', r, col: exCol, srcRow: sr, h: 22, top: acc }); acc += 22; }
+    }
+  }
+  return { list, total: acc, rowTop };
+}
+let lastVisual = null;   // cached {list,total,rowTop} from the most recent render
+
 function fmtStyle(f) {
   if (!f) return '';
   let s = '';
@@ -682,6 +764,7 @@ function render() {
   html += '</tr></thead><tbody>';
   const filters = sh.filters || {};
 
+  const lookups = sh.lookups || {}, expanded = sh.expanded || {};
   // Build the HTML for one data row.
   const renderRow = (r, h, frozen) => {
     const ra = (hlRows && r >= selR0 && r <= selR1) ? ' active' : '';
@@ -695,10 +778,36 @@ function render() {
       if (r === sel.r && c === sel.c) cls.push('selected');
       else if (inRange(r, c)) cls.push('in-range');
       if (r === 0) cls.push('filter-cell');
+      const hasLk = r >= 1 && lookups[c] && val !== '';
+      if (hasLk) cls.push('lookup-cell');
       const style = `width:${w}px;min-width:${w}px;height:${h}px;${fmtStyle(f)}`;
       let inner = escapeHtml(formatCell(val, f));
       if (r === 0) inner += `<span class="filter-btn${filters[c] ? ' active' : ''}" data-c="${c}" title="Filter / sort this column">▾</span>`;
+      if (hasLk) { const on = expanded[r] === c; inner += `<span class="lookup-btn${on ? ' on' : ''}" data-r="${r}" data-c="${c}" title="Show matching rows from '${escapeHtml(lookups[c].sheet)}'">${on ? '−' : '+'}</span>`; }
       s += `<td data-r="${r}" data-c="${c}" class="${cls.join(' ')}" style="${style}">${inner}</td>`;
+    }
+    return s + '</tr>';
+  };
+  // Build the HTML for a detail (sub-sheet) row from the lookup source.
+  const renderDetail = (item) => {
+    const lk = lookups[item.col]; const src = lk && sheetByName(lk.sheet);
+    if (item.kind === 'detailhead') {
+      const n = src ? usedCols(src) : 0;
+      let s = `<tr class="detail-row" style="height:${item.h}px"><th class="detail-rh" style="height:${item.h}px">↳</th>`;
+      s += `<td class="detail-cell detail-title" colspan="${numCols}" style="height:${item.h}px">Matching rows in <b>${escapeHtml(lk.sheet)}</b> · ${colName(lk.keyCol)} = <b>${escapeHtml(computedIn(sh, item.r, item.col))}</b></td>`;
+      return s + '</tr>';
+    }
+    if (item.kind === 'detailempty') {
+      return `<tr class="detail-row" style="height:${item.h}px"><th class="detail-rh" style="height:${item.h}px">↳</th><td class="detail-cell detail-empty" colspan="${numCols}" style="height:${item.h}px">No matching rows</td></tr>`;
+    }
+    // a matched data row: show the source row's cells (raw) across the grid columns
+    const nsrc = src ? usedCols(src) : 0;
+    let s = `<tr class="detail-row" style="height:${item.h}px"><th class="detail-rh" style="height:${item.h}px">↳</th>`;
+    for (let c = 0; c < numCols; c++) {
+      const w = colWidths[c] || 90;
+      const v = c < nsrc ? getRawOf(src, item.srcRow, c) : '';
+      const cls = 'detail-cell' + (c === 0 ? ' detail-first' : '');
+      s += `<td class="${cls}" style="width:${w}px;min-width:${w}px;height:${item.h}px">${escapeHtml(v)}</td>`;
     }
     return s + '</tr>';
   };
@@ -707,33 +816,26 @@ function render() {
   const h0 = rowHeights[0] || 22;
   html += renderRow(0, h0, true);
 
-  // ---- Virtualization for rows 1..numRows-1: only build DOM near the viewport ----
-  const vis = [];               // { r, h, top }  (top is tbody-relative to the first data row)
-  let acc = 0;
-  for (let r = 1; r < numRows; r++) {
-    if (isRowHidden(r)) continue;
-    const h = rowHeights[r] || 22;
-    vis.push({ r, h, top: acc });
-    acc += h;
-  }
-  const total1 = acc;
+  // ---- Virtualization over the visual list (data rows + expanded detail rows) ----
+  const vr = buildVisualRows(sh); lastVisual = vr;
+  const list = vr.list, total1 = vr.total;
   const viewH = gridWrap.clientHeight || 600;
   const base = HEADER_H + h0;               // content offset where the virtualized region begins
   const scrollBase = gridWrap.scrollTop - base;
   const BUF = 8;                            // extra rows above/below for smooth scrolling
-  let lo = 0, hi = vis.length;
-  while (lo < hi) { const mid = (lo + hi) >> 1; if (vis[mid].top + vis[mid].h <= scrollBase) lo = mid + 1; else hi = mid; }
+  let lo = 0, hi = list.length;
+  while (lo < hi) { const mid = (lo + hi) >> 1; if (list[mid].top + list[mid].h <= scrollBase) lo = mid + 1; else hi = mid; }
   let i0 = Math.max(0, lo - BUF);
   let i1 = i0;
-  while (i1 < vis.length && vis[i1].top < scrollBase + viewH) i1++;
-  i1 = Math.min(vis.length, i1 + BUF);
+  while (i1 < list.length && list[i1].top < scrollBase + viewH) i1++;
+  i1 = Math.min(list.length, i1 + BUF);
 
   const spacer = px => `<tr class="spacer"><td colspan="${numCols + 1}" style="height:${px}px;padding:0;border:0"></td></tr>`;
-  if (vis.length) {
-    const topPad = vis[i0].top;
-    const botPad = total1 - (vis[i1 - 1].top + vis[i1 - 1].h);
+  if (list.length) {
+    const topPad = list[i0].top;
+    const botPad = total1 - (list[i1 - 1].top + list[i1 - 1].h);
     if (topPad > 0) html += spacer(topPad);
-    for (let i = i0; i < i1; i++) html += renderRow(vis[i].r, vis[i].h, false);
+    for (let i = i0; i < i1; i++) { const it = list[i]; html += it.kind === 'data' ? renderRow(it.r, it.h, false) : renderDetail(it); }
     if (botPad > 0) html += spacer(botPad);
   }
   html += '</tbody>';
@@ -910,10 +1012,11 @@ function scrollVertical(r) {
   if (r < 1) return;                       // frozen header row is always visible
   const sh = S(), rowHeights = sh.rowHeights || {};
   const h0 = rowHeights[0] || 22, viewH = gridWrap.clientHeight || 600;
-  let top = 0;
-  for (let rr = 0; rr < r; rr++) { if (rr > 0 && isRowHidden(rr)) continue; top += rowHeights[rr] || 22; }
-  const rH = rowHeights[r] || 22, contentTop = HEADER_H + top;
-  if (contentTop - gridWrap.scrollTop < HEADER_H + h0) gridWrap.scrollTop = Math.max(0, top - h0);
+  // region-relative offset of row r (accounts for any expanded detail rows above it)
+  const vr = (lastVisual && lastVisual.rowTop && (r in lastVisual.rowTop)) ? lastVisual : buildVisualRows(sh);
+  const top = vr.rowTop[r] != null ? vr.rowTop[r] : 0;
+  const rH = rowHeights[r] || 22, contentTop = HEADER_H + h0 + top;
+  if (contentTop - gridWrap.scrollTop < HEADER_H + h0) gridWrap.scrollTop = Math.max(0, top);
   else if (contentTop + rH - gridWrap.scrollTop > viewH) gridWrap.scrollTop = contentTop + rH - viewH;
 }
 // Horizontal scroll: measure the actual rendered cell so it can't drift out of sync with
@@ -1296,10 +1399,18 @@ function afterFilterChange() {
 // open filter popup when the header dropdown is clicked
 gridEl.addEventListener('click', e => {
   const fb = e.target.closest('.filter-btn');
-  if (fb) { e.stopPropagation(); const c = +fb.dataset.c; const rect = fb.getBoundingClientRect(); openFilterPopup(c, rect.left, rect.bottom + 2); }
+  if (fb) { e.stopPropagation(); const c = +fb.dataset.c; const rect = fb.getBoundingClientRect(); openFilterPopup(c, rect.left, rect.bottom + 2); return; }
+  const lb = e.target.closest('.lookup-btn');
+  if (lb) {
+    e.stopPropagation();
+    const r = +lb.dataset.r, c = +lb.dataset.c, sh = S();
+    if (!sh.expanded) sh.expanded = {};
+    if (sh.expanded[r] === c) delete sh.expanded[r]; else sh.expanded[r] = c;   // toggle
+    render();
+  }
 });
-// don't start a cell selection when clicking the filter dropdown
-gridEl.addEventListener('mousedown', e => { if (e.target.classList.contains('filter-btn')) { e.stopPropagation(); } }, true);
+// don't start a cell selection when clicking the filter dropdown / lookup toggle
+gridEl.addEventListener('mousedown', e => { if (e.target.classList.contains('filter-btn') || e.target.classList.contains('lookup-btn')) { e.stopPropagation(); } }, true);
 // dismiss the popup on outside interactions (mousedown, for the same reason as above)
 document.addEventListener('mousedown', e => { if (!filterPop.contains(e.target) && !e.target.classList.contains('filter-btn')) hideFilterPopup(); });
 document.addEventListener('keydown', e => { if (e.key === 'Escape') hideFilterPopup(); });
@@ -1741,6 +1852,7 @@ gridEl.addEventListener('contextmenu', e => {
     let { c0, c1 } = selExtent();
     if (c < c0 || c > c1) { selKind = 'col'; sel = { r: 0, c }; rangeEnd = { r: S().numRows - 1, c }; render(); ({ c0, c1 } = selExtent()); }
     const cc = c1 - c0 + 1;
+    const hasLookup = S().lookups && S().lookups[c];
     showMenu(e.clientX, e.clientY, [
       ...clipItems(),
       { sep: true },
@@ -1750,6 +1862,9 @@ gridEl.addEventListener('contextmenu', e => {
       { sep: true },
       { label: '▲ Sort A→Z', fn: () => sortByColumn(c, 1) },
       { label: '▼ Sort Z→A', fn: () => sortByColumn(c, -1) },
+      { sep: true },
+      { label: hasLookup ? '🔗 Edit lookup…' : '🔗 Look up from another sheet…', fn: () => openLookupDialog(c) },
+      { label: '🔗 Remove lookup', disabled: !hasLookup, fn: () => removeLookup(c) },
     ]);
   } else if (rh) {
     const r = +rh.dataset.r;
@@ -1834,6 +1949,71 @@ btnHelp.addEventListener('click', () => { helpPop.style.display === 'block' ? hi
 helpPop.addEventListener('mouseenter', () => clearTimeout(helpTimer));
 helpPop.addEventListener('mouseleave', hideHelpSoon);
 document.addEventListener('keydown', e => { if (e.key === 'Escape') helpPop.style.display = 'none'; });
+
+/* =====================================================================
+   LOOKUP SETUP DIALOG
+   ===================================================================== */
+function removeLookup(col) {
+  const sh = S();
+  pushUndo();
+  if (sh.lookups) delete sh.lookups[col];
+  if (sh.expanded) for (const r in sh.expanded) if (sh.expanded[r] === col) delete sh.expanded[r];
+  render();
+}
+function openLookupDialog(col) {
+  hideMenu();
+  const sh = S();
+  const others = workbook.sheets.filter(s => s !== sh);
+  if (!others.length) { alert('Add another sheet first — a lookup pulls matching rows from a different sheet.'); return; }
+  const existing = sh.lookups && sh.lookups[col];
+
+  const overlay = document.createElement('div'); overlay.className = 'modal-overlay';
+  const box = document.createElement('div'); box.className = 'modal';
+  const h = document.createElement('h3'); h.textContent = `Look up column ${colName(col)} in another sheet`; box.appendChild(h);
+
+  const sheetRow = document.createElement('div'); sheetRow.className = 'mrow';
+  const sl = document.createElement('label'); sl.textContent = 'Source sheet'; sheetRow.appendChild(sl);
+  const sheetSel = document.createElement('select');
+  others.forEach(s => { const o = document.createElement('option'); o.value = s.name; o.textContent = s.name; sheetSel.appendChild(o); });
+  sheetRow.appendChild(sheetSel); box.appendChild(sheetRow);
+
+  const colRow = document.createElement('div'); colRow.className = 'mrow';
+  const cl = document.createElement('label'); cl.textContent = 'Match against column'; colRow.appendChild(cl);
+  const colSel = document.createElement('select'); colRow.appendChild(colSel); box.appendChild(colRow);
+
+  const hint = document.createElement('div'); hint.className = 'mhint';
+  hint.textContent = `Each cell in column ${colName(col)} gets a “+” that expands the rows of the source sheet where the chosen column equals that cell's value.`;
+  box.appendChild(hint);
+
+  function fillCols() {
+    const src = sheetByName(sheetSel.value); colSel.innerHTML = '';
+    const n = Math.max(usedCols(src), 6);
+    for (let c = 0; c < n; c++) { const o = document.createElement('option'); o.value = String(c); const hdr = getRawOf(src, 0, c); o.textContent = (hdr ? hdr + ' ' : '') + '(' + colName(c) + ')'; colSel.appendChild(o); }
+  }
+  sheetSel.onchange = fillCols;
+  if (existing) sheetSel.value = existing.sheet;
+  fillCols();
+  if (existing) colSel.value = String(existing.keyCol);
+
+  const foot = document.createElement('div'); foot.className = 'mfoot';
+  const cancel = document.createElement('button'); cancel.textContent = 'Cancel';
+  const ok = document.createElement('button'); ok.className = 'primary'; ok.textContent = existing ? 'Update' : 'Create';
+  foot.appendChild(cancel); foot.appendChild(ok); box.appendChild(foot);
+  overlay.appendChild(box); document.body.appendChild(overlay);
+
+  const close = () => { overlay.remove(); document.removeEventListener('keydown', esc); };
+  function esc(ev) { if (ev.key === 'Escape') close(); else if (ev.key === 'Enter') ok.click(); }
+  cancel.onclick = close;
+  overlay.addEventListener('mousedown', ev => { if (ev.target === overlay) close(); });
+  document.addEventListener('keydown', esc);
+  ok.onclick = () => {
+    pushUndo();
+    if (!sh.lookups) sh.lookups = {};
+    sh.lookups[col] = { sheet: sheetSel.value, keyCol: +colSel.value };
+    close(); render();
+  };
+  sheetSel.focus();
+}
 
 /* =====================================================================
    INIT (starts with a single empty sheet)
