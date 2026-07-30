@@ -1449,21 +1449,36 @@ function openFilterPopup(col, x, y) {
   const syncAll = () => { const vis = boxes.filter(b => b.lbl.style.display !== 'none'); allCb.checked = vis.every(b => b.cb.checked); };
   allCb.onchange = () => { boxes.forEach(b => { if (b.lbl.style.display !== 'none') b.cb.checked = allCb.checked; }); };
   boxes.forEach(b => b.cb.onchange = syncAll);
-  search.oninput = () => { const q = search.value.toLowerCase(); boxes.forEach(b => { b.lbl.style.display = label(b.v).toLowerCase().includes(q) ? '' : 'none'; }); syncAll(); };
+  search.oninput = () => {
+    const q = search.value.trim().toLowerCase();
+    boxes.forEach(b => {
+      const vis = label(b.v).toLowerCase().includes(q);
+      b.lbl.style.display = vis ? '' : 'none';
+      if (q && vis) b.cb.checked = true;   // auto-select matches so "search + OK" adds them
+    });
+    syncAll();
+  };
   syncAll();
 
   const foot = document.createElement('div'); foot.className = 'fp-foot';
   const cancel = document.createElement('button'); cancel.textContent = 'Cancel'; cancel.onclick = hideFilterPopup;
   const ok = document.createElement('button'); ok.className = 'primary'; ok.textContent = 'OK';
   ok.onclick = () => {
-    // A search term only narrows the visible list; apply the filter to the matching
-    // (visible) checked items so "search + OK" filters to those results.
     const searching = search.value.trim() !== '';
-    const pool = searching ? boxes.filter(b => b.lbl.style.display !== 'none') : boxes;
-    const checked = pool.filter(b => b.cb.checked).map(b => b.v);
     pushUndo();
-    if (!searching && checked.length === values.length) delete sh.filters[col];  // all selected, no search -> no filter
-    else sh.filters[col] = checked;
+    if (searching) {
+      // ADD the matching (checked, visible) values to the column's existing filter,
+      // so repeated searches accumulate instead of replacing the previous selection.
+      const base = sh.filters[col] ? new Set(sh.filters[col]) : new Set();
+      boxes.forEach(b => { if (b.lbl.style.display !== 'none' && b.cb.checked) base.add(b.v); });
+      if (values.every(v => base.has(v))) delete sh.filters[col];   // everything visible -> no filter
+      else sh.filters[col] = [...base];
+    } else {
+      // No search: manual checkbox selection. Select All (everything checked) clears the filter.
+      const checked = boxes.filter(b => b.cb.checked).map(b => b.v);
+      if (checked.length === values.length) delete sh.filters[col];
+      else sh.filters[col] = checked;
+    }
     hideFilterPopup(); afterFilterChange();
   };
   foot.appendChild(cancel); foot.appendChild(ok);
