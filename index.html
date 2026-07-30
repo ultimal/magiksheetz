@@ -246,6 +246,8 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
     position: sticky; top: calc(var(--head-h, 24px) - 1px); left: 0; z-index: 4;
     background: var(--header-active);
   }
+  /* frozen-column boundary line */
+  table.grid td.freeze-edge, table.grid thead th.freeze-edge { border-right: 2px solid var(--purple); }
   table.grid td .cell-input {
     position: absolute; inset: 0; border: none; outline: none; padding: 0 4px;
     font: inherit; width: 100%; height: 100%; background: var(--bg-dark); color: var(--fg);
@@ -530,7 +532,7 @@ const HEADER_H = 24, ROWHEAD_W = 42;   // column-header height / row-header widt
 let _lastHeadH = 0;                    // cached column-header height for the frozen-row sticky offset
 
 function newSheet(name) {
-  return { name, data: {}, fmt: {}, colWidths: {}, rowHeights: {}, filters: {}, lookups: {}, expanded: {}, numRows: MIN_ROWS, numCols: MIN_COLS, sortState: { col: null, dir: 0 } };
+  return { name, data: {}, fmt: {}, colWidths: {}, rowHeights: {}, filters: {}, lookups: {}, expanded: {}, freezeCols: 0, numRows: MIN_ROWS, numCols: MIN_COLS, sortState: { col: null, dir: 0 } };
 }
 let workbook = { sheets: [newSheet('Sheet1')], active: 0 };
 const S = () => workbook.sheets[workbook.active];
@@ -828,6 +830,8 @@ function render() {
   const sh = S();
   const numRows = sh.numRows, numCols = sh.numCols, colWidths = sh.colWidths, sortState = sh.sortState;
   const rowHeights = sh.rowHeights || {};
+  const freezeCols = sh.freezeCols || 0;   // columns 0..freezeCols-1 are pinned (sticky) on the left
+  const leftOff = []; { let x = ROWHEAD_W; for (let c = 0; c < numCols; c++) { leftOff[c] = x; x += (colWidths[c] || 90); } }
   // selection span -> used to highlight the row/column headers across the selection.
   // Only highlight the axis being selected (rows for a row-header drag, columns for a
   // column-header drag); a plain cell selection highlights both its row and column span.
@@ -839,7 +843,10 @@ function render() {
     const w = colWidths[c] || 90;
     const active = (hlCols && c >= selC0 && c <= selC1) ? ' active' : '';
     const ind = sortState.col === c ? `<span class="sort-ind">${sortState.dir === 1 ? '▲' : '▼'}</span>` : '';
-    html += `<th class="colhead${active}" data-c="${c}" style="width:${w}px;min-width:${w}px">${colName(c)}${ind}<span class="col-resizer" data-c="${c}"></span></th>`;
+    const froz = c < freezeCols;
+    const edge = froz && c === freezeCols - 1 ? ' freeze-edge' : '';
+    const fz = froz ? `position:sticky;left:${leftOff[c]}px;z-index:6;` : '';
+    html += `<th class="colhead${active}${edge}" data-c="${c}" style="width:${w}px;min-width:${w}px;${fz}">${colName(c)}${ind}<span class="col-resizer" data-c="${c}"></span></th>`;
   }
   html += '</tr></thead><tbody>';
   const filters = sh.filters || {};
@@ -860,7 +867,11 @@ function render() {
       if (r === 0) cls.push('filter-cell');
       const hasLk = r >= 1 && lookups[c] && val !== '';
       if (hasLk) cls.push('lookup-cell');
-      const style = `width:${w}px;min-width:${w}px;height:${h}px;${fmtStyle(f)}`;
+      const froz = c < freezeCols;
+      if (froz && c === freezeCols - 1) cls.push('freeze-edge');
+      // Frozen columns are sticky-left; row 0 cells are also sticky-top, so they need a higher z.
+      const fz = froz ? `position:sticky;left:${leftOff[c]}px;z-index:${r === 0 ? 4 : 3};` : '';
+      const style = `width:${w}px;min-width:${w}px;height:${h}px;${fmtStyle(f)}${fz}`;
       let inner = escapeHtml(formatCell(val, f));
       if (r === 0) inner += `<span class="filter-btn${filters[c] ? ' active' : ''}" data-c="${c}" title="Filter / sort this column">▾</span>`;
       if (hasLk) { const on = expanded[r] === c; inner += `<span class="lookup-btn${on ? ' on' : ''}" data-r="${r}" data-c="${c}" title="Show matching rows from '${escapeHtml(lookups[c].sheet)}'">${on ? '−' : '+'}</span>`; }
@@ -1107,21 +1118,24 @@ function scrollVertical(r) {
 // Horizontal scroll: measure the actual rendered cell so it can't drift out of sync with
 // computed widths. The row is guaranteed to be rendered (scrollVertical + render ran first).
 function scrollHorizontal(r, c) {
+  const sh = S(), fc = sh.freezeCols || 0;
+  if (c < fc) return;                                 // frozen columns are always visible
+  let frozenW = 0; for (let cc = 0; cc < fc; cc++) frozenW += (sh.colWidths[cc] || 90);
   const td = gridEl.querySelector(`td[data-r="${r}"][data-c="${c}"]`);
   const wrap = gridWrap.getBoundingClientRect();
   if (td) {
     const cell = td.getBoundingClientRect();
-    const leftBound = wrap.left + ROWHEAD_W;          // frozen row-header occludes the left edge
+    const leftBound = wrap.left + ROWHEAD_W + frozenW; // frozen row-header + frozen columns occlude the left edge
     if (cell.left < leftBound) gridWrap.scrollLeft -= (leftBound - cell.left);
     else if (cell.right > wrap.right) gridWrap.scrollLeft += (cell.right - wrap.right);
     return;
   }
   // fallback (row not rendered for some reason): analytic
-  const colWidths = S().colWidths;
+  const colWidths = sh.colWidths;
   let left = ROWHEAD_W;
   for (let cc = 0; cc < c; cc++) left += colWidths[cc] || 90;
-  const cW = colWidths[c] || 90, viewW = gridWrap.clientWidth || 800;
-  if (left - gridWrap.scrollLeft < ROWHEAD_W) gridWrap.scrollLeft = Math.max(0, left - ROWHEAD_W);
+  const cW = colWidths[c] || 90, viewW = gridWrap.clientWidth || 800, bound = ROWHEAD_W + frozenW;
+  if (left - gridWrap.scrollLeft < bound) gridWrap.scrollLeft = Math.max(0, left - bound);
   else if (left + cW - gridWrap.scrollLeft > viewW) gridWrap.scrollLeft = left + cW - viewW;
 }
 function startEdit(r, c, initial) {
@@ -2001,6 +2015,7 @@ gridEl.addEventListener('contextmenu', e => {
     if (c < c0 || c > c1) { selKind = 'col'; sel = { r: 0, c }; rangeEnd = { r: S().numRows - 1, c }; render(); ({ c0, c1 } = selExtent()); }
     const cc = c1 - c0 + 1;
     const hasLookup = S().lookups && S().lookups[c];
+    const frozen = S().freezeCols || 0;
     showMenu(e.clientX, e.clientY, [
       ...clipItems(),
       { sep: true },
@@ -2010,6 +2025,9 @@ gridEl.addEventListener('contextmenu', e => {
       { sep: true },
       { label: '▲ Sort A→Z', fn: () => sortByColumn(c, 1) },
       { label: '▼ Sort Z→A', fn: () => sortByColumn(c, -1) },
+      { sep: true },
+      { label: `❄ Freeze columns (through ${colName(c)})`, fn: () => setFreezeCols(c + 1) },
+      { label: '❄ Unfreeze columns', disabled: !frozen, fn: () => setFreezeCols(0) },
       { sep: true },
       { label: hasLookup ? '🔗 Edit lookup…' : '🔗 Look up from another sheet…', fn: () => openLookupDialog(c) },
       { label: '🔗 Remove lookup', disabled: !hasLookup, fn: () => removeLookup(c) },
@@ -2155,6 +2173,7 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape') helpPop.styl
 /* =====================================================================
    LOOKUP SETUP DIALOG
    ===================================================================== */
+function setFreezeCols(n) { pushUndo(); S().freezeCols = Math.max(0, Math.min(n, S().numCols)); render(); }
 function removeLookup(col) {
   const sh = S();
   pushUndo();

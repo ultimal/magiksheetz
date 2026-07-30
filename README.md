@@ -36,6 +36,7 @@ A fast, self-contained spreadsheet application that runs entirely in your browse
 
 ### UX
 - **Frozen, auto-styled header row** and sticky column/row headers
+- **Freeze columns** — right-click a column header → "Freeze columns (through X)" to pin the left columns while scrolling horizontally (independent of the frozen header row)
 - **Virtualized grid** — only the visible rows are rendered, so sheets with tens of thousands of rows stay smooth
 - Click-and-drag selection with edge auto-scroll; drag row/column headers to select whole rows/columns
 - Right-click **context menus** for cells, headers, and sheet tabs
