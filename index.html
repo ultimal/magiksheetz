@@ -92,6 +92,31 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
   .toolbar2 .tb:hover { background: var(--comment); }
   .toolbar2 .tb.active { background: var(--purple); border-color: var(--purple); color: var(--bg-dark); }
   .toolbar2 .tb.active:hover { background: var(--pink); }
+
+  /* ---------- Toolbar dropdown groups ---------- */
+  .toolbar2 .tb-group { position: relative; flex: 0 0 auto; display: inline-flex; }
+  .toolbar2 .tb-drop { gap: 2px; padding: 0 5px; }
+  .toolbar2 .tb-drop .caret { font-size: 8px; color: var(--comment); }
+  .toolbar2 .tb-drop.open { background: var(--comment); }
+  .tb-menu {
+    position: fixed; z-index: 1250; display: none; min-width: 180px;
+    background: var(--panel); border: 1px solid var(--border); border-radius: 6px;
+    box-shadow: 0 10px 26px rgba(0,0,0,0.55); padding: 4px; user-select: none;
+  }
+  .tb-menu .tb-item {
+    display: flex; align-items: center; gap: 10px; width: 100%; text-align: left;
+    background: none; border: none; color: var(--fg); cursor: pointer;
+    padding: 6px 10px; border-radius: 4px; font-size: 12.5px; font-family: inherit;
+  }
+  .tb-menu .tb-item:hover { background: var(--current); color: var(--green); }
+  .tb-menu .tb-item .i { width: 18px; text-align: center; display: inline-flex; justify-content: center; align-items: center; flex: 0 0 auto; }
+  .tb-menu .tb-item .i svg { display: block; }
+  .tb-menu .tb-item kbd {
+    margin-left: auto; background: var(--current); border: 1px solid #565968; border-radius: 3px;
+    padding: 0 5px; font-family: Consolas, monospace; font-size: 10.5px; color: var(--comment);
+  }
+  .tb-menu .tb-item:hover kbd { color: var(--fg); }
+  .tb-menu input[type=file] { display: none; }
   .toolbar2 select {
     border: 1px solid #565968; background: var(--current); color: var(--fg);
     border-radius: 4px; height: 26px; font-size: 12px; flex: 0 0 auto; padding: 0 4px;
@@ -364,14 +389,25 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
 
 <!-- Single-row icon toolbar -->
 <div class="toolbar2">
-  <button class="tb" id="btnNew" title="New workbook">🆕</button>
-  <label class="tb" id="btnOpen" title="Open .xlsx / .xls / .csv">📂<input type="file" id="fileInput" accept=".xlsx,.xls,.csv"></label>
-  <button class="tb" id="btnSaveXlsx" title="Save as .xlsx (all sheets)">💾</button>
-  <button class="tb" id="btnSaveCsv" title="Save current sheet as .csv">📄</button>
-  <span class="tsep"></span>
-  <button class="tb" id="btnCut" title="Cut (Ctrl+X)">✂</button>
-  <button class="tb" id="btnCopy" title="Copy (Ctrl+C)">⧉</button>
-  <button class="tb" id="btnPaste" title="Paste (Ctrl+V)">📋</button>
+  <!-- File -->
+  <span class="tb-group">
+    <button class="tb tb-drop" title="File">📁<span class="caret">▾</span></button>
+    <div class="tb-menu">
+      <button class="tb-item" id="btnNew" title="New workbook"><span class="i">🆕</span><span>New workbook</span></button>
+      <label class="tb-item" id="btnOpen" title="Open .xlsx / .xls / .csv"><span class="i">📂</span><span>Open…</span><input type="file" id="fileInput" accept=".xlsx,.xls,.csv"></label>
+      <button class="tb-item" id="btnSaveXlsx" title="Save as .xlsx (all sheets)"><span class="i">💾</span><span>Save as XLSX</span></button>
+      <button class="tb-item" id="btnSaveCsv" title="Save current sheet as .csv"><span class="i">📄</span><span>Save as CSV</span></button>
+    </div>
+  </span>
+  <!-- Clipboard -->
+  <span class="tb-group">
+    <button class="tb tb-drop" title="Clipboard">📋<span class="caret">▾</span></button>
+    <div class="tb-menu">
+      <button class="tb-item" id="btnCut" title="Cut (Ctrl+X)"><span class="i">✂</span><span>Cut <kbd>Ctrl+X</kbd></span></button>
+      <button class="tb-item" id="btnCopy" title="Copy (Ctrl+C)"><span class="i">⧉</span><span>Copy <kbd>Ctrl+C</kbd></span></button>
+      <button class="tb-item" id="btnPaste" title="Paste (Ctrl+V)"><span class="i">📋</span><span>Paste <kbd>Ctrl+V</kbd></span></button>
+    </div>
+  </span>
   <span class="tsep"></span>
   <select id="fontFamily" title="Font">
     <option>Calibri</option><option>Arial</option><option>Times New Roman</option>
@@ -389,10 +425,15 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
   <button class="tb colorbtn" id="textColor" title="Font color"><span class="cb-icon">A</span><span class="cb-swatch" id="textSwatch"></span></button>
   <button class="tb colorbtn" id="fillColor" title="Cell background color"><span class="cb-icon">🪣</span><span class="cb-swatch" id="fillSwatch"></span></button>
   <button class="tb" id="btnNoFill" title="Remove cell background (no fill)">✕</button>
-  <span class="tsep"></span>
-  <button class="tb" id="alignLeft" title="Align left">⯇</button>
-  <button class="tb" id="alignCenter" title="Align center">≡</button>
-  <button class="tb" id="alignRight" title="Align right">⯈</button>
+  <!-- Alignment -->
+  <span class="tb-group">
+    <button class="tb tb-drop" title="Alignment">≡<span class="caret">▾</span></button>
+    <div class="tb-menu">
+      <button class="tb-item" id="alignLeft" title="Align left"><span class="i">⯇</span><span>Align left</span></button>
+      <button class="tb-item" id="alignCenter" title="Align center"><span class="i">≡</span><span>Align center</span></button>
+      <button class="tb-item" id="alignRight" title="Align right"><span class="i">⯈</span><span>Align right</span></button>
+    </div>
+  </span>
   <span class="tsep"></span>
   <select id="numFmt" title="Number format">
     <option value="general">General</option>
@@ -406,22 +447,42 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
   </select>
   <button class="tb" id="btnFmtCurrency" title="Currency format ($)">$</button>
   <button class="tb" id="btnFmtPercent" title="Percent format (%)">%</button>
+  <!-- Clear -->
+  <span class="tb-group">
+    <button class="tb tb-drop" title="Clear">🧹<span class="caret">▾</span></button>
+    <div class="tb-menu">
+      <button class="tb-item" id="btnClear" title="Clear contents of selected cells"><span class="i">🧹</span><span>Clear contents</span></button>
+      <button class="tb-item" id="btnClearFmt" title="Clear formatting"><span class="i">🚫</span><span>Clear formatting</span></button>
+    </div>
+  </span>
   <span class="tsep"></span>
-  <button class="tb" id="btnClear" title="Clear contents of selected cells">🧹</button>
-  <button class="tb" id="btnClearFmt" title="Clear formatting">🚫</button>
-  <span class="tsep"></span>
-  <button class="tb" id="btnAddRow" title="Insert row above selection"><svg viewBox="0 0 16 16" width="16" height="16" fill="none" style="display:block"><rect x="1.5" y="9.5" width="13" height="4" rx="1" fill="currentColor" opacity=".5"/><path d="M8 1.5v5M5.5 4h5" stroke="var(--green)" stroke-width="1.7" stroke-linecap="round"/></svg></button>
-  <button class="tb" id="btnDelRow" title="Delete selected row(s)"><svg viewBox="0 0 16 16" width="16" height="16" fill="none" style="display:block"><rect x="1.5" y="9.5" width="13" height="4" rx="1" fill="currentColor" opacity=".5"/><path d="M5.5 4h5" stroke="var(--red)" stroke-width="1.7" stroke-linecap="round"/></svg></button>
-  <button class="tb" id="btnAddCol" title="Insert column left of selection"><svg viewBox="0 0 16 16" width="16" height="16" fill="none" style="display:block"><rect x="9.5" y="1.5" width="4" height="13" rx="1" fill="currentColor" opacity=".5"/><path d="M4 5.5v5M1.5 8h5" stroke="var(--green)" stroke-width="1.7" stroke-linecap="round"/></svg></button>
-  <button class="tb" id="btnDelCol" title="Delete selected column(s)"><svg viewBox="0 0 16 16" width="16" height="16" fill="none" style="display:block"><rect x="9.5" y="1.5" width="4" height="13" rx="1" fill="currentColor" opacity=".5"/><path d="M1.5 8h5" stroke="var(--red)" stroke-width="1.7" stroke-linecap="round"/></svg></button>
-  <button class="tb" id="btnAddSheet" title="Add a new sheet">🗂</button>
-  <span class="tsep"></span>
-  <button class="tb" id="btnSortAsc" title="Sort selected column ascending">▲</button>
-  <button class="tb" id="btnSortDesc" title="Sort selected column descending">▼</button>
-  <span class="tsep"></span>
-  <button class="tb" id="btnExportMap" title="Export lookup column mappings to a file (reuse with similar workbooks)">🔗↧</button>
-  <label class="tb" id="btnImportMap" title="Import lookup column mappings from a file">🔗↥<input type="file" id="mapInput" accept=".json,application/json"></label>
-  <span class="tsep"></span>
+  <!-- Cells (insert/delete/sheet) -->
+  <span class="tb-group">
+    <button class="tb tb-drop" title="Insert / delete rows &amp; columns">⊞<span class="caret">▾</span></button>
+    <div class="tb-menu">
+      <button class="tb-item" id="btnAddRow" title="Insert row above selection"><span class="i"><svg viewBox="0 0 16 16" width="16" height="16" fill="none"><rect x="1.5" y="9.5" width="13" height="4" rx="1" fill="currentColor" opacity=".5"/><path d="M8 1.5v5M5.5 4h5" stroke="var(--green)" stroke-width="1.7" stroke-linecap="round"/></svg></span><span>Insert row</span></button>
+      <button class="tb-item" id="btnAddCol" title="Insert column left of selection"><span class="i"><svg viewBox="0 0 16 16" width="16" height="16" fill="none"><rect x="9.5" y="1.5" width="4" height="13" rx="1" fill="currentColor" opacity=".5"/><path d="M4 5.5v5M1.5 8h5" stroke="var(--green)" stroke-width="1.7" stroke-linecap="round"/></svg></span><span>Insert column</span></button>
+      <button class="tb-item" id="btnDelRow" title="Delete selected row(s)"><span class="i"><svg viewBox="0 0 16 16" width="16" height="16" fill="none"><rect x="1.5" y="9.5" width="13" height="4" rx="1" fill="currentColor" opacity=".5"/><path d="M5.5 4h5" stroke="var(--red)" stroke-width="1.7" stroke-linecap="round"/></svg></span><span>Delete row(s)</span></button>
+      <button class="tb-item" id="btnDelCol" title="Delete selected column(s)"><span class="i"><svg viewBox="0 0 16 16" width="16" height="16" fill="none"><rect x="9.5" y="1.5" width="4" height="13" rx="1" fill="currentColor" opacity=".5"/><path d="M1.5 8h5" stroke="var(--red)" stroke-width="1.7" stroke-linecap="round"/></svg></span><span>Delete column(s)</span></button>
+      <button class="tb-item" id="btnAddSheet" title="Add a new sheet"><span class="i">🗂</span><span>New sheet</span></button>
+    </div>
+  </span>
+  <!-- Sort -->
+  <span class="tb-group">
+    <button class="tb tb-drop" title="Sort">⇅<span class="caret">▾</span></button>
+    <div class="tb-menu">
+      <button class="tb-item" id="btnSortAsc" title="Sort selected column ascending"><span class="i">▲</span><span>Sort A → Z</span></button>
+      <button class="tb-item" id="btnSortDesc" title="Sort selected column descending"><span class="i">▼</span><span>Sort Z → A</span></button>
+    </div>
+  </span>
+  <!-- Lookup mappings -->
+  <span class="tb-group">
+    <button class="tb tb-drop" title="Lookup column mappings">🔗<span class="caret">▾</span></button>
+    <div class="tb-menu">
+      <button class="tb-item" id="btnExportMap" title="Export lookup column mappings to a file (reuse with similar workbooks)"><span class="i">↧</span><span>Export mappings…</span></button>
+      <label class="tb-item" id="btnImportMap" title="Import lookup column mappings from a file"><span class="i">↥</span><span>Import mappings…</span><input type="file" id="mapInput" accept=".json,application/json"></label>
+    </div>
+  </span>
   <button class="tb" id="btnHelp" title="Keyboard shortcuts" style="margin-left:auto;font-weight:700">?</button>
 </div>
 
@@ -2027,6 +2088,30 @@ function openLookupDialog(col) {
   };
   sheetSel.focus();
 }
+
+/* =====================================================================
+   TOOLBAR DROPDOWN GROUPS
+   ===================================================================== */
+const tbGroups = [...document.querySelectorAll('.toolbar2 .tb-group')];
+function closeTbMenus() { tbGroups.forEach(g => { g.querySelector('.tb-menu').style.display = 'none'; g.querySelector('.tb-drop').classList.remove('open'); }); }
+tbGroups.forEach(g => {
+  const trigger = g.querySelector('.tb-drop'), menu = g.querySelector('.tb-menu');
+  trigger.addEventListener('click', e => {
+    e.stopPropagation();
+    const isOpen = menu.style.display === 'block';
+    closeTbMenus();
+    if (!isOpen) {
+      menu.style.display = 'block';
+      const r = trigger.getBoundingClientRect(), w = menu.offsetWidth;
+      menu.style.left = Math.max(4, Math.min(r.left, window.innerWidth - w - 4)) + 'px';
+      menu.style.top = (r.bottom + 3) + 'px';
+      trigger.classList.add('open');
+    }
+  });
+  menu.addEventListener('click', () => closeTbMenus());   // close after an item's action runs
+});
+document.addEventListener('mousedown', e => { if (!e.target.closest('.tb-group')) closeTbMenus(); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeTbMenus(); });
 
 /* =====================================================================
    EXPORT / IMPORT LOOKUP COLUMN MAPPINGS
