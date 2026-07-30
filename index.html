@@ -1438,7 +1438,7 @@ function openFilterPopup(col, x, y) {
   const sep = document.createElement('div'); sep.className = 'fp-sep'; filterPop.appendChild(sep);
 
   const search = document.createElement('input');
-  search.className = 'fp-search'; search.placeholder = 'Search…'; search.spellcheck = false;
+  search.className = 'fp-search'; search.placeholder = 'Search, or paste a comma / line list…'; search.spellcheck = false;
   filterPop.appendChild(search);
 
   const list = document.createElement('div'); list.className = 'fp-list';
@@ -1463,15 +1463,39 @@ function openFilterPopup(col, x, y) {
   const syncAll = () => { const vis = boxes.filter(b => b.lbl.style.display !== 'none'); allCb.checked = vis.every(b => b.cb.checked); };
   allCb.onchange = () => { boxes.forEach(b => { if (b.lbl.style.display !== 'none') b.cb.checked = allCb.checked; }); };
   boxes.forEach(b => b.cb.onchange = syncAll);
-  search.oninput = () => {
-    const q = search.value.trim().toLowerCase();
-    boxes.forEach(b => {
-      const vis = label(b.v).toLowerCase().includes(q);
-      b.lbl.style.display = vis ? '' : 'none';
-      if (q && vis) b.cb.checked = true;   // auto-select matches so "search + OK" adds them
-    });
+  // A single term does substring matching; a comma/newline-separated list does exact
+  // matching against each item and selects every value it finds.
+  function runSearch(raw) {
+    const items = raw.split(/[,\r\n]+/).map(s => s.trim()).filter(Boolean);
+    const isList = items.length > 1 || /[,\r\n]/.test(raw);
+    if (isList) {
+      const want = new Set(items.map(s => s.toLowerCase()));
+      boxes.forEach(b => {
+        const match = want.has(String(b.v).trim().toLowerCase());
+        b.lbl.style.display = match ? '' : 'none';
+        if (match) b.cb.checked = true;
+      });
+    } else {
+      const q = raw.trim().toLowerCase();
+      boxes.forEach(b => {
+        const vis = label(b.v).toLowerCase().includes(q);
+        b.lbl.style.display = vis ? '' : 'none';
+        if (q && vis) b.cb.checked = true;   // auto-select matches so "search + OK" adds them
+      });
+    }
     syncAll();
-  };
+  }
+  search.oninput = () => runSearch(search.value);
+  // Single-line inputs strip newlines on paste, so read the raw clipboard text here to
+  // support newline-separated lists too.
+  search.addEventListener('paste', ev => {
+    const t = (ev.clipboardData || window.clipboardData).getData('text');
+    if (t && /[,\r\n]/.test(t)) {
+      ev.preventDefault();
+      search.value = t.split(/[,\r\n]+/).map(s => s.trim()).filter(Boolean).join(', ');
+      runSearch(t);
+    }
+  });
   syncAll();
 
   const foot = document.createElement('div'); foot.className = 'fp-foot';
