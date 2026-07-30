@@ -1230,6 +1230,7 @@ function openFilterPopup(col, x, y) {
   const item = (html, fn) => { const d = document.createElement('div'); d.className = 'fp-item'; d.innerHTML = html; d.onclick = () => { hideFilterPopup(); fn(); }; return d; };
   filterPop.appendChild(item('▲ Sort A → Z', () => sortByColumn(col, 1)));
   filterPop.appendChild(item('▼ Sort Z → A', () => sortByColumn(col, -1)));
+  filterPop.appendChild(item('▲ Sort IP address ascending', () => sortByColumn(col, 1, 'ip')));
   if (active) filterPop.appendChild(item('✕ Clear filter from this column', () => { delete sh.filters[col]; afterFilterChange(); }));
   const sep = document.createElement('div'); sep.className = 'fp-sep'; filterPop.appendChild(sep);
 
@@ -1347,7 +1348,15 @@ document.addEventListener('paste', e => {
 /* =====================================================================
    SORTING
    ===================================================================== */
-function sortByColumn(col, dir) {
+// Numeric key for an IPv4 address ("a.b.c.d"), or null if not a valid IPv4.
+function ipKey(s) {
+  const m = /^\s*(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})\s*$/.exec(String(s));
+  if (!m) return null;
+  let v = 0;
+  for (let i = 1; i <= 4; i++) { const o = +m[i]; if (o > 255) return null; v = v * 256 + o; }
+  return v;
+}
+function sortByColumn(col, dir, mode) {
   pushUndo();
   const sh = S();
   let maxRow = -1;
@@ -1363,11 +1372,20 @@ function sortByColumn(col, dir) {
   }
   rowsArr.sort((a, b) => {
     let av = a.keyVal, bv = b.keyVal;
-    const an = parseFloat(av), bn = parseFloat(bv);
-    const bothNum = av !== '' && bv !== '' && !isNaN(an) && !isNaN(bn);
     let cmp;
-    if (bothNum) cmp = an - bn;
-    else { if (av === '' && bv !== '') return 1; if (bv === '' && av !== '') return -1; cmp = String(av).localeCompare(String(bv), undefined, { numeric: true, sensitivity: 'base' }); }
+    if (mode === 'ip') {
+      // sort by IPv4 numeric value; non-IP / blank values sort last
+      const ak = ipKey(av), bk = ipKey(bv);
+      if (ak != null && bk != null) cmp = ak - bk;
+      else if (ak != null) return -1;
+      else if (bk != null) return 1;
+      else { if (av === '' && bv !== '') return 1; if (bv === '' && av !== '') return -1; cmp = String(av).localeCompare(String(bv), undefined, { numeric: true, sensitivity: 'base' }); }
+    } else {
+      const an = parseFloat(av), bn = parseFloat(bv);
+      const bothNum = av !== '' && bv !== '' && !isNaN(an) && !isNaN(bn);
+      if (bothNum) cmp = an - bn;
+      else { if (av === '' && bv !== '') return 1; if (bv === '' && av !== '') return -1; cmp = String(av).localeCompare(String(bv), undefined, { numeric: true, sensitivity: 'base' }); }
+    }
     return dir === 1 ? cmp : -cmp;
   });
   rowsArr.forEach((row, idx) => {
