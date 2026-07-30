@@ -1606,7 +1606,10 @@ function doPaste(text) {
 
 document.addEventListener('paste', e => {
   if (editing) return;
-  if (document.activeElement === formulaInput || document.activeElement === nameBox) return;
+  // If focus is in any text field (formula bar, name box, filter search, etc.),
+  // let the browser paste there natively instead of routing to the grid.
+  const ae = document.activeElement;
+  if (ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA' || ae.isContentEditable)) return;
   const text = (e.clipboardData || window.clipboardData).getData('text'); if (!text) return;
   e.preventDefault();
   doPaste(text);
