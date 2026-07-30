@@ -834,7 +834,7 @@ function render() {
   const selR0 = Math.min(sel.r, rangeEnd.r), selR1 = Math.max(sel.r, rangeEnd.r);
   const selC0 = Math.min(sel.c, rangeEnd.c), selC1 = Math.max(sel.c, rangeEnd.c);
   const hlCols = selKind !== 'row', hlRows = selKind !== 'col';
-  let html = '<thead><tr><th class="corner"></th>';
+  let html = '<thead><tr><th class="corner" title="Select all (Ctrl+A)"></th>';
   for (let c = 0; c < numCols; c++) {
     const w = colWidths[c] || 90;
     const active = (hlCols && c >= selC0 && c <= selC1) ? ' active' : '';
@@ -1171,6 +1171,7 @@ let mouseDown = false, dragMode = 'cell', anchorCol = 0, anchorRow = 0;
 gridEl.addEventListener('mousedown', e => {
   if (e.button === 2) return;   // right-click handled by the contextmenu listener
   if (e.target.classList.contains('col-resizer') || e.target.classList.contains('row-resizer')) return;
+  if (e.target.closest('th.corner')) { selectAll(); focusGrid(); return; }   // top-left cell = select all
   const td = e.target.closest('td'), th = e.target.closest('th.colhead'), rh = e.target.closest('th.rowhead');
   if (td) {
     if (editing) commitEdit(gridEl.querySelector('.cell-input')?.value ?? '');
