@@ -500,6 +500,14 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
       <label class="tb-item" id="btnImportMap" title="Import lookup column mappings from a file"><span class="i">↥</span><span>Import mappings…</span><input type="file" id="mapInput" accept=".json,application/json"></label>
     </div>
   </span>
+  <!-- PowerShell actions -->
+  <span class="tb-group">
+    <button class="tb tb-drop" title="PowerShell actions">🖥️<span class="caret">▾</span></button>
+    <div class="tb-menu">
+      <button class="tb-item" id="btnAdImport" title="Query Active Directory users and import them into the workbook"><span class="i">🗃️</span><span>Import AD users…</span></button>
+      <button class="tb-item" id="btnPingColumn" title="Ping every value in a column and store the result alongside it"><span class="i">📶</span><span>Ping column…</span></button>
+    </div>
+  </span>
   <button class="tb" id="btnSettings" title="Command server settings" style="margin-left:auto">⚙️</button>
   <button class="tb" id="btnHelp" title="Keyboard shortcuts" style="font-weight:700">?</button>
 </div>
@@ -2355,6 +2363,257 @@ function openSettingsDialog() {
   hostInput.focus();
 }
 document.getElementById('btnSettings').addEventListener('click', openSettingsDialog);
+
+/* =====================================================================
+   POWERSHELL ACTIONS (Active Directory import, ping column)
+   ===================================================================== */
+function b64EncodeUtf8(str) { return btoa(unescape(encodeURIComponent(str))); }
+/* Embeds an arbitrary JS object into a PS snippet with zero quoting risk: the
+   payload travels as base64 (alphabet has no quote chars), so no target value,
+   filter string, or property name can break out of the generated command. */
+function psDecodePayload(payload, varName) {
+  const b64 = b64EncodeUtf8(JSON.stringify(payload));
+  return `$${varName} = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${b64}')) | ConvertFrom-Json`;
+}
+async function callCommandServer(command) {
+  const cfg = serverConfig;
+  if (!cfg.token) throw new Error('No command-server token configured. Open ⚙ Settings and paste in the token printed by websheets-server.ps1.');
+  let res;
+  try {
+    res = await fetch(`http://${cfg.host}:${cfg.port}/run`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-WebSheets-Token': cfg.token },
+      body: JSON.stringify({ command, shell: 'powershell' }),
+    });
+  } catch (err) {
+    throw new Error(`Could not reach ${cfg.host}:${cfg.port} — ${err.message}`);
+  }
+  let data;
+  try { data = await res.json(); } catch { throw new Error(`Server returned a non-JSON response (HTTP ${res.status}).`); }
+  if (!res.ok) throw new Error(data.error || `Server error (HTTP ${res.status}).`);
+  if (data.timedOut) throw new Error('Command timed out on the server.');
+  if (!data.ok) throw new Error((data.stderr && data.stderr.trim()) || data.error || `Command exited with code ${data.exitCode}.`);
+  return data.stdout;
+}
+
+function openAdImportDialog() {
+  const overlay = document.createElement('div'); overlay.className = 'modal-overlay';
+  const box = document.createElement('div'); box.className = 'modal';
+  const h = document.createElement('h3'); h.textContent = 'Import Active Directory users'; box.appendChild(h);
+
+  const hint = document.createElement('div'); hint.className = 'mhint';
+  hint.textContent = 'Runs Get-ADUser on the command-server machine (requires the ActiveDirectory PowerShell module there). Results are written as a table, one row per user.';
+  box.appendChild(hint);
+
+  const filterRow = document.createElement('div'); filterRow.className = 'mrow';
+  const filterLabel = document.createElement('label'); filterLabel.textContent = 'Filter'; filterRow.appendChild(filterLabel);
+  const filterInput = document.createElement('input'); filterInput.type = 'text'; filterInput.value = '*'; filterInput.placeholder = "* (all users), or e.g. Enabled -eq 'true'";
+  filterRow.appendChild(filterInput); box.appendChild(filterRow);
+
+  const propsRow = document.createElement('div'); propsRow.className = 'mrow';
+  const propsLabel = document.createElement('label'); propsLabel.textContent = 'Properties (comma-separated)'; propsRow.appendChild(propsLabel);
+  const propsInput = document.createElement('input'); propsInput.type = 'text';
+  propsInput.value = 'Name,SamAccountName,EmailAddress,Enabled,Title,Department,LastLogonDate';
+  propsRow.appendChild(propsInput); box.appendChild(propsRow);
+
+  const destRow = document.createElement('div'); destRow.className = 'mrow';
+  const destLabel = document.createElement('label'); destLabel.textContent = 'Write results to'; destRow.appendChild(destLabel);
+  const destSel = document.createElement('select');
+  [['new', 'New sheet'], ['current', 'Current sheet (starting at A1)']].forEach(([v, t]) => { const o = document.createElement('option'); o.value = v; o.textContent = t; destSel.appendChild(o); });
+  destRow.appendChild(destSel); box.appendChild(destRow);
+
+  const status = document.createElement('div'); status.className = 'mstatus'; box.appendChild(status);
+
+  const foot = document.createElement('div'); foot.className = 'mfoot';
+  const cancel = document.createElement('button'); cancel.textContent = 'Cancel';
+  const run = document.createElement('button'); run.className = 'primary'; run.textContent = 'Run';
+  foot.appendChild(cancel); foot.appendChild(run); box.appendChild(foot);
+  overlay.appendChild(box); document.body.appendChild(overlay);
+
+  const close = () => { overlay.remove(); document.removeEventListener('keydown', esc); };
+  function esc(ev) { if (ev.key === 'Escape') close(); }
+  cancel.onclick = close;
+  overlay.addEventListener('mousedown', ev => { if (ev.target === overlay) close(); });
+  document.addEventListener('keydown', esc);
+
+  run.onclick = async () => {
+    const properties = propsInput.value.split(',').map(s => s.trim()).filter(Boolean);
+    if (!properties.length) { status.className = 'mstatus err'; status.textContent = 'Enter at least one property.'; return; }
+    const filter = filterInput.value.trim() || '*';
+    const decode = psDecodePayload({ filter, properties }, 'p');
+    const command = `
+$ProgressPreference = 'SilentlyContinue'
+${decode}
+try {
+  $props = @($p.properties)
+  Import-Module ActiveDirectory -ErrorAction Stop
+  $users = Get-ADUser -Filter $p.filter -Properties $props
+  $rows = @(foreach ($u in $users) {
+    $row = [ordered]@{}
+    foreach ($prop in $props) { $row[$prop] = [string]$u.$prop }
+    [PSCustomObject]$row
+  })
+  ConvertTo-Json -InputObject $rows -Compress -Depth 4
+} catch {
+  [Console]::Error.WriteLine($_.Exception.Message)
+  exit 1
+}`.trim();
+
+    status.className = 'mstatus'; status.textContent = 'Querying Active Directory…';
+    run.disabled = true; cancel.disabled = true;
+    try {
+      const stdout = await callCommandServer(command);
+      let rows;
+      try { rows = JSON.parse(stdout || '[]'); } catch { throw new Error('Could not parse the server response as JSON.'); }
+      if (!Array.isArray(rows)) rows = rows ? [rows] : [];
+
+      pushUndo();
+      let sh;
+      if (destSel.value === 'new') {
+        let name = 'AD Users', i = 2;
+        while (workbook.sheets.some(s => s.name === name)) { name = 'AD Users ' + i; i++; }
+        sh = newSheet(name);
+        workbook.sheets.push(sh);
+        workbook.active = workbook.sheets.length - 1;
+      } else {
+        sh = S();
+      }
+      properties.forEach((p, c) => { sh.data[key(0, c)] = { raw: p }; });
+      rows.forEach((row, r) => {
+        properties.forEach((p, c) => {
+          const v = row[p];
+          if (v !== undefined && v !== null && v !== '') sh.data[key(r + 1, c)] = { raw: String(v) };
+        });
+      });
+      sh.numRows = Math.max(MIN_ROWS, rows.length + 11);
+      sh.numCols = Math.max(MIN_COLS, properties.length + 3);
+      sel = { r: 0, c: 0 }; rangeEnd = { r: 0, c: 0 };
+      renderTabs(); render();
+      close();
+    } catch (err) {
+      status.className = 'mstatus err';
+      status.textContent = err.message;
+    } finally {
+      run.disabled = false; cancel.disabled = false;
+    }
+  };
+  filterInput.focus();
+}
+document.getElementById('btnAdImport').addEventListener('click', openAdImportDialog);
+
+function openPingColumnDialog() {
+  const sh = S();
+  const overlay = document.createElement('div'); overlay.className = 'modal-overlay';
+  const box = document.createElement('div'); box.className = 'modal';
+  const h = document.createElement('h3'); h.textContent = 'Ping column'; box.appendChild(h);
+
+  const hint = document.createElement('div'); hint.className = 'mhint';
+  hint.textContent = 'Sends every non-empty value in the column to the command server, which pings each one and returns reachability and latency.';
+  box.appendChild(hint);
+
+  const n = Math.max(usedCols(sh), sel.c + 1, 6);
+  const colRow = document.createElement('div'); colRow.className = 'mrow';
+  const colLabel = document.createElement('label'); colLabel.textContent = 'Column to ping'; colRow.appendChild(colLabel);
+  const colSel = document.createElement('select');
+  for (let c = 0; c < n; c++) { const o = document.createElement('option'); o.value = String(c); const hdr = getRawOf(sh, 0, c); o.textContent = (hdr ? hdr + ' ' : '') + '(' + colName(c) + ')'; colSel.appendChild(o); }
+  colSel.value = String(sel.c);
+  colRow.appendChild(colSel); box.appendChild(colRow);
+
+  const hdrRow = document.createElement('div'); hdrRow.className = 'mrow';
+  const hdrLabel = document.createElement('label'); hdrLabel.style.cssText = 'display:flex;align-items:center;gap:6px;cursor:pointer;';
+  const hdrChk = document.createElement('input'); hdrChk.type = 'checkbox'; hdrChk.checked = true;
+  hdrLabel.appendChild(hdrChk); hdrLabel.appendChild(document.createTextNode('First row is a header (skip it)'));
+  hdrRow.appendChild(hdrLabel); box.appendChild(hdrRow);
+
+  const destRow = document.createElement('div'); destRow.className = 'mrow';
+  const destLabel = document.createElement('label'); destLabel.textContent = 'Write results to'; destRow.appendChild(destLabel);
+  const destSel = document.createElement('select');
+  const newOpt = document.createElement('option'); newOpt.value = 'new'; newOpt.textContent = 'New column (inserted to the right)'; destSel.appendChild(newOpt);
+  for (let c = 0; c < n; c++) { const o = document.createElement('option'); o.value = String(c); const hdr = getRawOf(sh, 0, c); o.textContent = 'Overwrite ' + (hdr ? hdr + ' ' : '') + '(' + colName(c) + ')'; destSel.appendChild(o); }
+  destSel.value = 'new';
+  destRow.appendChild(destSel); box.appendChild(destRow);
+
+  const status = document.createElement('div'); status.className = 'mstatus'; box.appendChild(status);
+
+  const foot = document.createElement('div'); foot.className = 'mfoot';
+  const cancel = document.createElement('button'); cancel.textContent = 'Cancel';
+  const run = document.createElement('button'); run.className = 'primary'; run.textContent = 'Run';
+  foot.appendChild(cancel); foot.appendChild(run); box.appendChild(foot);
+  overlay.appendChild(box); document.body.appendChild(overlay);
+
+  const close = () => { overlay.remove(); document.removeEventListener('keydown', esc); };
+  function esc(ev) { if (ev.key === 'Escape') close(); }
+  cancel.onclick = close;
+  overlay.addEventListener('mousedown', ev => { if (ev.target === overlay) close(); });
+  document.addEventListener('keydown', esc);
+
+  run.onclick = async () => {
+    const srcCol = +colSel.value;
+    const startRow = hdrChk.checked ? 1 : 0;
+    const maxRow = usedRows(sh);
+    const entries = [];
+    for (let r = startRow; r <= maxRow; r++) {
+      const v = getRawOf(sh, r, srcCol);
+      if (v !== '' && v != null) entries.push({ row: r, target: String(v).trim() });
+    }
+    if (!entries.length) { status.className = 'mstatus err'; status.textContent = 'No values found in that column.'; return; }
+
+    const decode = psDecodePayload({ targets: entries.map(e => e.target) }, 'p');
+    const command = `
+$ProgressPreference = 'SilentlyContinue'
+${decode}
+try {
+  $targets = @($p.targets)
+  $results = @(foreach ($t in $targets) {
+    try {
+      $r = Test-Connection -ComputerName $t -Count 1 -ErrorAction Stop
+      $ms = $null
+      if ($r.PSObject.Properties.Name -contains 'ResponseTime') { $ms = ($r | Select-Object -First 1).ResponseTime }
+      elseif ($r.PSObject.Properties.Name -contains 'Latency') { $ms = ($r | Select-Object -First 1).Latency }
+      [PSCustomObject]@{ target = $t; reachable = $true; ms = $ms }
+    } catch {
+      [PSCustomObject]@{ target = $t; reachable = $false; ms = $null; error = $_.Exception.Message }
+    }
+  })
+  ConvertTo-Json -InputObject $results -Compress -Depth 3
+} catch {
+  [Console]::Error.WriteLine($_.Exception.Message)
+  exit 1
+}`.trim();
+
+    status.className = 'mstatus'; status.textContent = `Pinging ${entries.length} value(s)…`;
+    run.disabled = true; cancel.disabled = true;
+    try {
+      const stdout = await callCommandServer(command);
+      let results;
+      try { results = JSON.parse(stdout || '[]'); } catch { throw new Error('Could not parse the server response as JSON.'); }
+      if (!Array.isArray(results)) results = results ? [results] : [];
+
+      let destCol;
+      if (destSel.value === 'new') {
+        destCol = srcCol + 1;
+        insertColAt(destCol);
+      } else {
+        pushUndo();
+        destCol = +destSel.value;
+      }
+      entries.forEach((e, i) => {
+        const res = results[i];
+        let text = '';
+        if (res) text = res.reachable ? ('Yes' + (res.ms != null ? ` (${res.ms}ms)` : '')) : ('No' + (res.error ? ` — ${res.error}` : ''));
+        setRaw(e.row, destCol, text);
+      });
+      render();
+      close();
+    } catch (err) {
+      status.className = 'mstatus err';
+      status.textContent = err.message;
+    } finally {
+      run.disabled = false; cancel.disabled = false;
+    }
+  };
+}
+document.getElementById('btnPingColumn').addEventListener('click', openPingColumnDialog);
 
 /* =====================================================================
    TOOLBAR DROPDOWN GROUPS
