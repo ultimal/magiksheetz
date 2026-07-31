@@ -1323,6 +1323,18 @@ gridWrap.addEventListener('keydown', e => {
   if (ctrl && k === 'ArrowDown') {                // Ctrl+Down -> bottom of the current column
     e.preventDefault(); selectCell(colEndRow(sel.c), sel.c, e.shiftKey); return;
   }
+  if (ctrl && k === 'Insert') {                  // Ctrl+Insert -> insert column left / row below the selection
+    e.preventDefault();
+    if (selKind === 'col') insertColAt(Math.min(sel.c, rangeEnd.c));
+    else if (selKind === 'row') insertRowAt(Math.max(sel.r, rangeEnd.r) + 1);
+    return;
+  }
+  if (ctrl && k === 'Delete') {                  // Ctrl+Delete -> delete the selected row(s)/column(s), no confirm
+    e.preventDefault();
+    if (selKind === 'col') { const c0 = Math.min(sel.c, rangeEnd.c), c1 = Math.max(sel.c, rangeEnd.c); deleteCols(c0, c1 - c0 + 1); }
+    else if (selKind === 'row') { const r0 = Math.min(sel.r, rangeEnd.r), r1 = Math.max(sel.r, rangeEnd.r); deleteRows(r0, r1 - r0 + 1); }
+    return;
+  }
   if (k === ' ' && ctrl) {                       // Ctrl+Space -> select entire column(s)
     const c0 = Math.min(sel.c, rangeEnd.c), c1 = Math.max(sel.c, rangeEnd.c);
     selKind = 'col'; sel = { r: 0, c: c0 }; rangeEnd = { r: S().numRows - 1, c: c1 };
