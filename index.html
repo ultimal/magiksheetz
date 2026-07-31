@@ -356,13 +356,17 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
   .modal h3 { margin: 0 0 14px; color: var(--purple); font-size: 14px; }
   .modal .mrow { display: flex; flex-direction: column; gap: 5px; margin-bottom: 12px; }
   .modal .mrow label { color: var(--comment); font-size: 12px; }
-  .modal select { border: 1px solid #565968; background: var(--current); color: var(--fg); border-radius: 4px; padding: 6px 8px; font-size: 13px; }
+  .modal select, .modal input[type="text"], .modal input[type="number"] { border: 1px solid #565968; background: var(--current); color: var(--fg); border-radius: 4px; padding: 6px 8px; font-size: 13px; width: 100%; box-sizing: border-box; font-family: inherit; }
   .modal .mhint { color: var(--comment); font-size: 11.5px; margin: -4px 0 14px; line-height: 1.4; }
   .modal .mfoot { display: flex; justify-content: flex-end; gap: 8px; }
   .modal .mfoot button { border: 1px solid #565968; background: var(--current); color: var(--fg); border-radius: 4px; padding: 6px 14px; cursor: pointer; font-size: 12px; }
   .modal .mfoot button:hover { background: var(--comment); }
   .modal .mfoot button.primary { background: var(--purple); border-color: var(--purple); color: var(--bg-dark); font-weight: 600; }
   .modal .mfoot button.primary:hover { background: var(--pink); }
+  .modal .mfoot button:disabled { opacity: .55; cursor: default; }
+  .modal .mstatus { font-size: 11.5px; margin: -4px 0 12px; line-height: 1.4; min-height: 14px; }
+  .modal .mstatus.ok { color: var(--green); }
+  .modal .mstatus.err { color: var(--red); }
 
   .filter-pop {
     position: fixed; z-index: 1100; background: var(--panel);
@@ -496,7 +500,8 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
       <label class="tb-item" id="btnImportMap" title="Import lookup column mappings from a file"><span class="i">↥</span><span>Import mappings…</span><input type="file" id="mapInput" accept=".json,application/json"></label>
     </div>
   </span>
-  <button class="tb" id="btnHelp" title="Keyboard shortcuts" style="margin-left:auto;font-weight:700">?</button>
+  <button class="tb" id="btnSettings" title="Command server settings" style="margin-left:auto">⚙️</button>
+  <button class="tb" id="btnHelp" title="Keyboard shortcuts" style="font-weight:700">?</button>
 </div>
 
 <div class="formula-bar">
@@ -2259,6 +2264,97 @@ function openLookupDialog(col) {
   };
   sheetSel.focus();
 }
+
+/* =====================================================================
+   COMMAND SERVER SETTINGS DIALOG
+   ===================================================================== */
+const SERVER_CONFIG_KEY = 'websheets.commandServer';
+function loadServerConfig() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(SERVER_CONFIG_KEY));
+    if (saved && typeof saved === 'object') return { host: 'localhost', port: 8787, token: '', ...saved };
+  } catch {}
+  return { host: 'localhost', port: 8787, token: '' };
+}
+function saveServerConfig(cfg) { localStorage.setItem(SERVER_CONFIG_KEY, JSON.stringify(cfg)); }
+let serverConfig = loadServerConfig();
+
+function openSettingsDialog() {
+  const cfg = serverConfig;
+
+  const overlay = document.createElement('div'); overlay.className = 'modal-overlay';
+  const box = document.createElement('div'); box.className = 'modal';
+  const h = document.createElement('h3'); h.textContent = 'Command server settings'; box.appendChild(h);
+
+  const hint = document.createElement('div'); hint.className = 'mhint';
+  hint.textContent = 'Connection details for the local PowerShell command server (see server/README.md). The token is printed to the server console on startup.';
+  box.appendChild(hint);
+
+  const hostRow = document.createElement('div'); hostRow.className = 'mrow';
+  const hostLabel = document.createElement('label'); hostLabel.textContent = 'Host / IP address'; hostRow.appendChild(hostLabel);
+  const hostInput = document.createElement('input'); hostInput.type = 'text'; hostInput.value = cfg.host; hostInput.placeholder = 'localhost';
+  hostRow.appendChild(hostInput); box.appendChild(hostRow);
+
+  const portRow = document.createElement('div'); portRow.className = 'mrow';
+  const portLabel = document.createElement('label'); portLabel.textContent = 'Port'; portRow.appendChild(portLabel);
+  const portInput = document.createElement('input'); portInput.type = 'number'; portInput.min = '1'; portInput.max = '65535'; portInput.value = cfg.port;
+  portRow.appendChild(portInput); box.appendChild(portRow);
+
+  const tokenRow = document.createElement('div'); tokenRow.className = 'mrow';
+  const tokenLabel = document.createElement('label'); tokenLabel.textContent = 'Token'; tokenRow.appendChild(tokenLabel);
+  const tokenInput = document.createElement('input'); tokenInput.type = 'text'; tokenInput.value = cfg.token; tokenInput.placeholder = 'printed on server startup';
+  tokenRow.appendChild(tokenInput); box.appendChild(tokenRow);
+
+  const status = document.createElement('div'); status.className = 'mstatus'; box.appendChild(status);
+
+  const foot = document.createElement('div'); foot.className = 'mfoot';
+  const cancel = document.createElement('button'); cancel.textContent = 'Cancel';
+  const test = document.createElement('button'); test.textContent = 'Test connection';
+  const save = document.createElement('button'); save.className = 'primary'; save.textContent = 'Save';
+  foot.appendChild(cancel); foot.appendChild(test); foot.appendChild(save); box.appendChild(foot);
+  overlay.appendChild(box); document.body.appendChild(overlay);
+
+  const close = () => { overlay.remove(); document.removeEventListener('keydown', esc); };
+  function esc(ev) { if (ev.key === 'Escape') close(); }
+  cancel.onclick = close;
+  overlay.addEventListener('mousedown', ev => { if (ev.target === overlay) close(); });
+  document.addEventListener('keydown', esc);
+
+  test.onclick = async () => {
+    const host = hostInput.value.trim() || 'localhost';
+    const port = portInput.value.trim() || '8787';
+    status.className = 'mstatus';
+    status.textContent = 'Testing…';
+    test.disabled = true;
+    try {
+      const res = await fetch(`http://${host}:${port}/ping`);
+      const data = await res.json();
+      if (res.ok && data && data.ok) {
+        status.className = 'mstatus ok';
+        status.textContent = `Connected — ${data.server || 'server'} v${data.version ?? '?'}`;
+      } else {
+        status.className = 'mstatus err';
+        status.textContent = `Server responded but reported an error (HTTP ${res.status}).`;
+      }
+    } catch (err) {
+      status.className = 'mstatus err';
+      status.textContent = `Could not reach ${host}:${port} — ${err.message}`;
+    } finally {
+      test.disabled = false;
+    }
+  };
+
+  save.onclick = () => {
+    const host = hostInput.value.trim() || 'localhost';
+    const port = Math.max(1, Math.min(65535, parseInt(portInput.value, 10) || 8787));
+    const token = tokenInput.value.trim();
+    serverConfig = { host, port, token };
+    saveServerConfig(serverConfig);
+    close();
+  };
+  hostInput.focus();
+}
+document.getElementById('btnSettings').addEventListener('click', openSettingsDialog);
 
 /* =====================================================================
    TOOLBAR DROPDOWN GROUPS
