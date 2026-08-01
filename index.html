@@ -1689,38 +1689,55 @@ document.addEventListener('copy', e => {
   e.preventDefault();
 });
 
-// Paste the internal buffer, rewriting relative refs by (dr,dc). A cut moves refs unchanged.
-function pasteBlock(cells, dr, dc) {
-  pushUndo();
+// Write one copy of `cells` with its top-left at (baseR, baseC), clipped to (maxR, maxC).
+// `origin` is the copy's top-left when relative references should be rewritten (the shift
+// is derived per placement, so each tile's formulas point at its own neighbours), or null
+// to write the values literally.
+function writeBlock(cells, baseR, baseC, maxR, maxC, origin) {
+  const dr = origin ? baseR - origin.r : 0, dc = origin ? baseC - origin.c : 0;
   cells.forEach((rawRow, i) => rawRow.forEach((raw, j) => {
-    const r = sel.r + i, c = sel.c + j;
+    const r = baseR + i, c = baseC + j;
+    if (r > maxR || c > maxC) return;
     if (r >= S().numRows) S().numRows = r + 1;
     if (c >= S().numCols) S().numCols = c + 1;
     let val = raw;
     if (raw && raw[0] === '=' && (dr || dc)) val = '=' + shiftRefs(raw.slice(1), dr, dc);
     setRaw(r, c, val);
   }));
+}
+// Paste a block of raw values. With one cell selected the block lands once at that cell;
+// with a range selected it is tiled across the whole selection and clipped to it, so the
+// copied content fills every highlighted cell (copy one cell, select a range, paste -> all
+// of them get it). `origin` as in writeBlock.
+function pasteCells(cells, origin) {
+  const bh = cells.length, bw = bh ? Math.max(...cells.map(row => row.length)) : 0;
+  if (!bh || !bw) return;
+  pushUndo();
+  const r0 = Math.min(sel.r, rangeEnd.r), r1 = Math.max(sel.r, rangeEnd.r);
+  const c0 = Math.min(sel.c, rangeEnd.c), c1 = Math.max(sel.c, rangeEnd.c);
+  const single = r0 === r1 && c0 === c1;
+  // A single-cell selection is just an anchor, so the block may run past it; a range is a
+  // target area, so tiles stop at its edge.
+  const maxR = single ? Infinity : r1, maxC = single ? Infinity : c1;
+  const repR = single ? 1 : Math.ceil((r1 - r0 + 1) / bh);
+  const repC = single ? 1 : Math.ceil((c1 - c0 + 1) / bw);
+  for (let ti = 0; ti < repR; ti++) {
+    for (let tj = 0; tj < repC; tj++) writeBlock(cells, r0 + ti * bh, c0 + tj * bw, maxR, maxC, origin);
+  }
   render();
 }
 // Paste TSV text as literal values (content copied from another app).
 function pasteText(text) {
-  pushUndo();
   const rows = text.replace(/\r/g, '').split('\n'); if (rows.length && rows[rows.length - 1] === '') rows.pop();
-  rows.forEach((line, i) => line.split('\t').forEach((val, j) => {
-    const r = sel.r + i, c = sel.c + j;
-    if (r >= S().numRows) S().numRows = r + 1;
-    if (c >= S().numCols) S().numCols = c + 1;
-    setRaw(r, c, val);
-  }));
-  render();
+  pasteCells(rows.map(line => line.split('\t')), null);
 }
 // Use the formula-aware buffer when the OS clipboard still holds exactly what we copied;
 // otherwise paste the external text literally.
 function doPaste(text) {
   if (!text) return;
   if (clip && text === clip.text) {
-    const dr = clip.cut ? 0 : sel.r - clip.r0, dc = clip.cut ? 0 : sel.c - clip.c0;
-    pasteBlock(clip.cells, dr, dc);
+    // A cut moves refs unchanged; a copy rewrites them relative to where each tile lands.
+    pasteCells(clip.cells, clip.cut ? null : { r: clip.r0, c: clip.c0 });
   } else {
     pasteText(text);
   }
