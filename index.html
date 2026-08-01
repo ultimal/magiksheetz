@@ -1696,6 +1696,7 @@ function buildClip(isCut) {
   const c0 = Math.min(sel.c, rangeEnd.c), c1 = Math.max(sel.c, rangeEnd.c);
   const cells = [], rowsText = [];
   for (let r = r0; r <= r1; r++) {
+    if (isRowHidden(r)) continue; // skip rows hidden by an active filter
     const rawRow = [], txtRow = [];
     for (let c = c0; c <= c1; c++) { rawRow.push(getRaw(r, c)); txtRow.push(getComputed(r, c)); }
     cells.push(rawRow); rowsText.push(txtRow.join('\t'));
