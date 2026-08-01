@@ -253,6 +253,15 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
     font: inherit; width: 100%; height: 100%; background: var(--bg-dark); color: var(--fg);
     font-family: Consolas, "Courier New", monospace;
   }
+  /* ---------- Fill handle (drag to fill / continue a series) ---------- */
+  /* Cells clip their overflow, so the handle sits just inside the bottom-right corner. */
+  .fill-handle {
+    position: absolute; right: 0; bottom: 0; width: 7px; height: 7px;
+    background: var(--sel); border: 1px solid var(--bg-dark);
+    cursor: crosshair; z-index: 7;
+  }
+  table.grid td.fill-target { box-shadow: inset 0 0 0 1px var(--green); }
+
   .col-resizer {
     position: absolute; top: 0; right: -3px; width: 6px; height: 100%;
     cursor: col-resize; z-index: 6;
@@ -825,6 +834,12 @@ function buildVisualRows(sh) {
   return { list, total: acc, rowTop };
 }
 let lastVisual = null;   // cached {list,total,rowTop} from the most recent render
+let fillDrag = null;     // source extent while the fill handle is being dragged
+let fillPreview = null;  // {axis,dir,r0,c0,r1,c1} region that would be filled on release
+function inFillPreview(r, c) {
+  const f = fillPreview;
+  return !!f && r >= f.r0 && r <= f.r1 && c >= f.c0 && c <= f.c1;
+}
 
 function fmtStyle(f) {
   if (!f) return '';
@@ -877,6 +892,7 @@ function render() {
       if ((isNumeric(val) || isNumberLike(val)) && getRaw(r, c)[0] !== "'" && !(f && f.align) && !(f && f.nf === 'text')) cls.push('num');
       if (r === sel.r && c === sel.c) cls.push('selected');
       else if (inRange(r, c)) cls.push('in-range');
+      if (inFillPreview(r, c)) cls.push('fill-target');
       if (r === 0) cls.push('filter-cell');
       const hasLk = r >= 1 && lookups[c] && val !== '';
       if (hasLk) cls.push('lookup-cell');
@@ -888,6 +904,8 @@ function render() {
       let inner = escapeHtml(formatCell(val, f));
       if (r === 0) inner += `<span class="filter-btn${filters[c] ? ' active' : ''}" data-c="${c}" title="Filter / sort this column">▾</span>`;
       if (hasLk) { const on = expanded[r] === c; inner += `<span class="lookup-btn${on ? ' on' : ''}" data-r="${r}" data-c="${c}" title="Show matching rows from '${escapeHtml(lookups[c].sheet)}'">${on ? '−' : '+'}</span>`; }
+      // fill handle on the selection's bottom-right cell
+      if (!editing && !fillPreview && r === selR1 && c === selC1) inner += '<span class="fill-handle" title="Drag to fill"></span>';
       s += `<td data-r="${r}" data-c="${c}" class="${cls.join(' ')}" style="${style}">${inner}</td>`;
     }
     return s + '</tr>';
@@ -1208,6 +1226,13 @@ gridEl.addEventListener('mousedown', e => {
   if (e.button === 2) return;   // right-click handled by the contextmenu listener
   if (e.target.classList.contains('col-resizer') || e.target.classList.contains('row-resizer')) return;
   if (e.target.closest('th.corner')) { selectAll(); focusGrid(); return; }   // top-left cell = select all
+  if (e.target.classList.contains('fill-handle')) {   // drag to fill, not to select
+    e.preventDefault(); e.stopPropagation();
+    commitActiveEdit();
+    fillDrag = selExtent(); fillPreview = null;
+    mouseDown = true; dragMode = 'fill'; focusGrid();
+    return;
+  }
   const td = e.target.closest('td'), th = e.target.closest('th.colhead'), rh = e.target.closest('th.rowhead');
   if (td) {
     commitActiveEdit();
@@ -1257,6 +1282,14 @@ function rowFromPoint(clientY) {
 }
 // Extend the current selection to the pointer, per drag mode. Returns true if it changed.
 function extendFromPointer(clientX, clientY) {
+  if (dragMode === 'fill') {
+    const cell = cellFromPoint(clientX, clientY);
+    if (!cell) return false;
+    const next = fillRegion(fillDrag, cell);
+    const same = JSON.stringify(next) === JSON.stringify(fillPreview);
+    fillPreview = next;
+    return !same;
+  }
   if (dragMode === 'col') {
     const c = colFromPoint(clientX);
     if (c == null) return false;
@@ -1294,7 +1327,15 @@ window.addEventListener('mousemove', e => {
   if (extendFromPointer(e.clientX, e.clientY)) render();
   if ((dragDir.x || dragDir.y) && !autoRAF) autoRAF = requestAnimationFrame(autoScrollStep);
 });
-window.addEventListener('mouseup', () => { mouseDown = false; dragDir = { x: 0, y: 0 }; if (autoRAF) { cancelAnimationFrame(autoRAF); autoRAF = null; } });
+window.addEventListener('mouseup', () => {
+  mouseDown = false; dragDir = { x: 0, y: 0 };
+  if (autoRAF) { cancelAnimationFrame(autoRAF); autoRAF = null; }
+  if (dragMode === 'fill') {
+    const src = fillDrag, tgt = fillPreview;
+    fillDrag = null; fillPreview = null; dragMode = 'cell';
+    if (tgt) applyFill(src, tgt); else render();   // released inside the source = no-op
+  }
+});
 gridEl.addEventListener('dblclick', e => { const td = e.target.closest('td'); if (td) startEdit(+td.dataset.r, +td.dataset.c); });
 
 gridWrap.setAttribute('tabindex', '0');
@@ -1754,6 +1795,123 @@ document.addEventListener('paste', e => {
   e.preventDefault();
   doPaste(text);
 });
+
+/* =====================================================================
+   FILL HANDLE  (drag the bottom-right corner to continue a series)
+   ===================================================================== */
+// What can be advanced: a trailing digit run ("Item07" -> 07, zero-padding preserved) or a
+// trailing letter run ("Server-A"). The letter run is deliberately capped at 2 characters and
+// must either be the whole value or follow a non-letter separator — otherwise dragging a word
+// like "Total" would produce "Totam".
+function splitTail(v) {
+  const s = v == null ? '' : String(v);
+  // A value that is entirely a number advances as a number (3.5 -> 4.5, -2 -> -1) rather than
+  // by its trailing digit run, which would give 3.6.
+  // Width is only preserved for genuinely zero-padded runs ("007" -> 008), otherwise "10"
+  // would imply 2 digits and count down to "09".
+  const padOf = d => d[0] === '0' && d.length > 1 ? d.length : 0;
+  if (/^-?\d+(?:\.\d+)?$/.test(s)) {
+    const dec = (s.split('.')[1] || '').length;
+    return { kind: 'num', prefix: '', num: parseFloat(s), dec, pad: dec ? 0 : padOf(s.replace('-', '')) };
+  }
+  let m = /^(.*?)(\d+)$/.exec(s);
+  if (m) return { kind: 'num', prefix: m[1], num: parseInt(m[2], 10), pad: padOf(m[2]), dec: 0 };
+  m = /^(.*?)([A-Za-z]{1,2})$/.exec(s);
+  if (m && (m[1] === '' || !/[A-Za-z]$/.test(m[1]))) {
+    return { kind: 'alpha', prefix: m[1], letters: m[2], lower: m[2] === m[2].toLowerCase() };
+  }
+  return { kind: 'none' };
+}
+function joinTail(t, n) {
+  if (t.kind === 'num') {
+    if (t.dec) return t.prefix + n.toFixed(t.dec);   // also rounds off float drift
+    const digits = String(Math.abs(n));
+    return t.prefix + (n < 0 ? '-' : '') + (digits.length < t.pad ? '0'.repeat(t.pad - digits.length) + digits : digits);
+  }
+  // Letters advance like column names (Z -> AA), clamped at A going backwards.
+  const s = colName(Math.max(0, n));
+  return t.prefix + (t.lower ? s.toLowerCase() : s);
+}
+// Step between the two source cells nearest the drag edge, so 1,3 continues 5,7. Falls back
+// to 1 when the source is a single cell or the two don't share a shape.
+function inferStep(vals, dir) {
+  if (vals.length < 2) return 1;
+  const a = dir > 0 ? vals[vals.length - 2] : vals[1];
+  const b = dir > 0 ? vals[vals.length - 1] : vals[0];
+  const ta = splitTail(a), tb = splitTail(b);
+  if (ta.kind !== tb.kind || ta.prefix !== tb.prefix) return 1;
+  if (ta.kind === 'num') return Math.abs(tb.num - ta.num) || 1;
+  if (ta.kind === 'alpha') return Math.abs(colFromName(tb.letters) - colFromName(ta.letters)) || 1;
+  return 1;
+}
+// Value for the k-th cell past the source edge (k >= 1), filling in direction dir (+1 past the
+// end, -1 before the start). Formulas shift their refs like a copy; an incrementable tail is
+// advanced; anything else repeats the source cyclically.
+function fillCellValue(vals, k, dir, srcCoords, target) {
+  const n = vals.length;
+  const base = dir > 0 ? vals[n - 1] : vals[0];
+  const t = splitTail(base);
+  if (!(base && base[0] === '=') && t.kind !== 'none') {
+    const start = t.kind === 'num' ? t.num : colFromName(t.letters);
+    return joinTail(t, start + dir * inferStep(vals, dir) * k);
+  }
+  const idx = dir > 0 ? (n - 1 + k) % n : (((-k) % n) + n) % n;
+  const raw = vals[idx];
+  if (raw && raw[0] === '=') {
+    const s = srcCoords[idx];
+    return '=' + shiftRefs(raw.slice(1), target.r - s.r, target.c - s.c);
+  }
+  return raw;
+}
+// Target rectangle for a drag from the source extent to `cell`, on whichever axis was
+// dragged further. Returns null while the pointer is still inside the source.
+function fillRegion(src, cell) {
+  const down = cell.r - src.r1, up = src.r0 - cell.r;
+  const right = cell.c - src.c1, left = src.c0 - cell.c;
+  const vert = Math.max(down, up), horiz = Math.max(right, left);
+  if (vert <= 0 && horiz <= 0) return null;
+  if (vert >= horiz) {
+    return down > 0
+      ? { axis: 'v', dir: 1, r0: src.r1 + 1, r1: cell.r, c0: src.c0, c1: src.c1 }
+      : { axis: 'v', dir: -1, r0: cell.r, r1: src.r0 - 1, c0: src.c0, c1: src.c1 };
+  }
+  return right > 0
+    ? { axis: 'h', dir: 1, r0: src.r0, r1: src.r1, c0: src.c1 + 1, c1: cell.c }
+    : { axis: 'h', dir: -1, r0: src.r0, r1: src.r1, c0: cell.c, c1: src.c0 - 1 };
+}
+function applyFill(src, tgt) {
+  if (!src || !tgt) return;
+  pushUndo();
+  const sh = S();
+  if (tgt.axis === 'v') {
+    for (let c = tgt.c0; c <= tgt.c1; c++) {
+      const vals = [], coords = [];
+      for (let r = src.r0; r <= src.r1; r++) { vals.push(getRaw(r, c)); coords.push({ r, c }); }
+      // walk outward from the source edge so k counts distance from it
+      const rows = []; for (let r = tgt.r0; r <= tgt.r1; r++) rows.push(r);
+      if (tgt.dir < 0) rows.reverse();
+      rows.forEach((r, i) => {
+        if (r >= sh.numRows) sh.numRows = r + 1;
+        setRaw(r, c, fillCellValue(vals, i + 1, tgt.dir, coords, { r, c }));
+      });
+    }
+  } else {
+    for (let r = tgt.r0; r <= tgt.r1; r++) {
+      const vals = [], coords = [];
+      for (let c = src.c0; c <= src.c1; c++) { vals.push(getRaw(r, c)); coords.push({ r, c }); }
+      const cols = []; for (let c = tgt.c0; c <= tgt.c1; c++) cols.push(c);
+      if (tgt.dir < 0) cols.reverse();
+      cols.forEach((c, i) => {
+        if (c >= sh.numCols) sh.numCols = c + 1;
+        setRaw(r, c, fillCellValue(vals, i + 1, tgt.dir, coords, { r, c }));
+      });
+    }
+  }
+  // leave the source plus the filled area selected, as Excel does
+  sel = { r: Math.min(src.r0, tgt.r0), c: Math.min(src.c0, tgt.c0) };
+  rangeEnd = { r: Math.max(src.r1, tgt.r1), c: Math.max(src.c1, tgt.c1) };
+  render();
+}
 
 /* =====================================================================
    SORTING
