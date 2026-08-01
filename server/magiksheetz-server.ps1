@@ -1,13 +1,13 @@
 <#
-  WebSheets local command server
+  MagikSheetz local command server
   ------------------------------------------------------------------------------
-  A tiny loopback-only HTTP server that lets the WebSheets page send a command,
+  A tiny loopback-only HTTP server that lets the MagikSheetz page send a command,
   runs it in an isolated child process, and returns stdout / stderr / exit code.
 
   SECURITY — read this:
     * Binds to http://localhost:<port> only (never exposed to the network).
     * Every /run request must carry the shared token (printed on startup) in the
-      "X-WebSheets-Token" header, so a random web page can't drive it.
+      "X-MagikSheetz-Token" header, so a random web page can't drive it.
     * The Origin header is checked (only null / localhost / 127.0.0.1 allowed).
     * Optional -Confirm prompts you in this console before each command runs.
     * This still executes commands on your machine. Run it only for your own use,
@@ -15,12 +15,12 @@
       allow-list of specific operations instead of an open shell.
 
   USAGE:
-    powershell -ExecutionPolicy Bypass -File .\websheets-server.ps1
-    powershell -ExecutionPolicy Bypass -File .\websheets-server.ps1 -Port 8787 -Confirm
+    powershell -ExecutionPolicy Bypass -File .\magiksheetz-server.ps1
+    powershell -ExecutionPolicy Bypass -File .\magiksheetz-server.ps1 -Port 8787 -Confirm
 
   API:
     GET  /ping                      -> { ok, server, version }
-    POST /run                       -> run a command (needs X-WebSheets-Token)
+    POST /run                       -> run a command (needs X-MagikSheetz-Token)
          body: { "command": "...", "shell": "powershell"|"cmd", "cwd": "C:\\..." }
          resp: { ok, exitCode, stdout, stderr, durationMs, timedOut }
 #>
@@ -48,7 +48,7 @@ function Write-JsonResponse($ctx, [int]$status, $obj, [string]$allowOrigin) {
   $res.StatusCode = $status
   if ($allowOrigin) { $res.Headers['Access-Control-Allow-Origin'] = $allowOrigin }
   $res.Headers['Vary'] = 'Origin'
-  $res.Headers['Access-Control-Allow-Headers'] = 'Content-Type, X-WebSheets-Token'
+  $res.Headers['Access-Control-Allow-Headers'] = 'Content-Type, X-MagikSheetz-Token'
   $res.Headers['Access-Control-Allow-Methods'] = 'POST, GET, OPTIONS'
   $json  = $obj | ConvertTo-Json -Depth 6 -Compress
   $bytes = [Text.Encoding]::UTF8.GetBytes($json)
@@ -70,7 +70,7 @@ function Invoke-ShellCommand([string]$command, [string]$shell, [string]$cwd, [in
 
   $batFile = $null
   if ($shell -eq 'cmd') {
-    $batFile = [IO.Path]::Combine([IO.Path]::GetTempPath(), "websheets_$([guid]::NewGuid().ToString('N')).cmd")
+    $batFile = [IO.Path]::Combine([IO.Path]::GetTempPath(), "magiksheetz_$([guid]::NewGuid().ToString('N')).cmd")
     Set-Content -LiteralPath $batFile -Value "@chcp 65001 >nul`r`n$command" -Encoding Oem
     $psi.FileName  = $env:ComSpec
     $psi.Arguments = "/c `"$batFile`""
@@ -121,10 +121,10 @@ catch {
 }
 
 Write-Host ""
-Write-Host "  WebSheets local command server" -ForegroundColor Green
+Write-Host "  MagikSheetz local command server" -ForegroundColor Green
 Write-Host "  Listening on $prefix  (loopback only)"
 Write-Host "  Token: " -NoNewline; Write-Host $Token -ForegroundColor Cyan
-Write-Host "  -> Paste this token into WebSheets to authorize requests."
+Write-Host "  -> Paste this token into MagikSheetz to authorize requests."
 if ($Confirm) { Write-Host "  Confirm mode ON: you'll be asked before each command runs." -ForegroundColor Yellow }
 Write-Host "  Press Ctrl+C to stop."
 Write-Host ""
@@ -148,12 +148,12 @@ try {
       $path = $req.Url.AbsolutePath
 
       if ($path -eq '/ping' -and $req.HttpMethod -eq 'GET') {
-        Write-JsonResponse $ctx 200 @{ ok = $true; server = 'websheets'; version = 1 } $allowOrigin
+        Write-JsonResponse $ctx 200 @{ ok = $true; server = 'magiksheetz'; version = 1 } $allowOrigin
         continue
       }
 
       if ($path -eq '/run' -and $req.HttpMethod -eq 'POST') {
-        if ($req.Headers['X-WebSheets-Token'] -ne $Token) {
+        if ($req.Headers['X-MagikSheetz-Token'] -ne $Token) {
           Write-JsonResponse $ctx 401 @{ ok = $false; error = 'invalid or missing token' } $allowOrigin
           continue
         }

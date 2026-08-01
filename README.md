@@ -1,8 +1,8 @@
-# 📊 WebSheets
+# 📊 MagikSheetz
 
 A fast, self-contained spreadsheet application that runs entirely in your browser from a **single HTML file** — no build step, no server, no install. Open `index.html` and start working.
 
-![WebSheets screenshot](screenshot.png)
+![MagikSheetz screenshot](screenshot.png)
 
 ## Features
 
@@ -49,8 +49,8 @@ Just open the file — that's it:
 
 ```
 # clone, then open in your browser
-git clone git@github.com:ultimal/websheets.git
-cd websheets
+git clone git@github.com:ultimal/magiksheetz.git
+cd magiksheetz
 # open index.html (double-click, or:)
 start index.html      # Windows
 open  index.html      # macOS
