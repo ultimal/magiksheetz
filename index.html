@@ -1213,10 +1213,12 @@ gridEl.addEventListener('mousedown', e => {
     commitActiveEdit();
     mouseDown = true; dragMode = 'cell'; selectCell(+td.dataset.r, +td.dataset.c, e.shiftKey); focusGrid();
   } else if (th) {
+    commitActiveEdit();   // before sel moves, so the edit lands on the cell it came from
     const c = +th.dataset.c;
     mouseDown = true; dragMode = 'col'; selKind = 'col'; anchorCol = c;
     sel = { r: 0, c }; rangeEnd = { r: S().numRows - 1, c }; render(); focusGrid();
   } else if (rh) {
+    commitActiveEdit();
     const r = +rh.dataset.r;
     mouseDown = true; dragMode = 'row'; selKind = 'row'; anchorRow = r;
     sel = { r, c: 0 }; rangeEnd = { r, c: S().numCols - 1 }; render(); focusGrid();
@@ -1598,11 +1600,20 @@ gridWrap.addEventListener('scroll', () => {
 
 nameBox.addEventListener('keydown', e => { if (e.key === 'Enter') { const p = parseRef(nameBox.value); if (p) selectCell(p.r, p.c); focusGrid(); } });
 formulaInput.addEventListener('focus', () => { if (!editing) editing = { r: sel.r, c: sel.c }; });
+// These commit through commitEdit(), which writes to the cell recorded in `editing` —
+// NOT to sel. The selection can move out from under an in-flight formula-bar edit (e.g.
+// clicking a row/column header), and writing to sel would dump the old cell's text into
+// whatever is selected by then.
 formulaInput.addEventListener('keydown', e => {
-  if (e.key === 'Enter') { if (getRaw(sel.r, sel.c) !== formulaInput.value.trim()) { pushUndo(); setRaw(sel.r, sel.c, formulaInput.value.trim()); } editing = null; selectCell(sel.r + 1, sel.c); focusGrid(); }
-  else if (e.key === 'Escape') { editing = null; formulaInput.value = getRaw(sel.r, sel.c); focusGrid(); }
+  if (e.key === 'Enter') {
+    if (!editing) editing = { r: sel.r, c: sel.c };
+    const { r, c } = editing;                     // commitEdit clears `editing`
+    commitEdit(formulaInput.value);
+    selectCell(r + 1, c); focusGrid();
+  }
+  else if (e.key === 'Escape') { const t = editing || sel; editing = null; formulaInput.value = getRaw(t.r, t.c); focusGrid(); }
 });
-formulaInput.addEventListener('blur', () => { if (editing && document.activeElement !== formulaInput) { if (getRaw(sel.r, sel.c) !== formulaInput.value.trim()) { pushUndo(); setRaw(sel.r, sel.c, formulaInput.value.trim()); } editing = null; render(); } });
+formulaInput.addEventListener('blur', () => { if (editing && document.activeElement !== formulaInput) commitEdit(formulaInput.value); });
 
 /* =====================================================================
    CLIPBOARD
