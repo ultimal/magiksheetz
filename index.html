@@ -1310,8 +1310,10 @@ gridWrap.addEventListener('keydown', e => {
   if (ctrl && k.toLowerCase() === 'i') { e.preventDefault(); toggleFmt('i'); return; }
   if (ctrl && k.toLowerCase() === 'u') { e.preventDefault(); toggleFmt('u'); return; }
   if (ctrl && k.toLowerCase() === 'a') { e.preventDefault(); selectAll(); return; }
-  if (ctrl && k.toLowerCase() === 'c') { copySelection(); return; }
-  if (ctrl && k.toLowerCase() === 'x') { copySelection(true); clearSelection(); return; }
+  // preventDefault so the browser's own copy (of an empty DOM selection) can't run after
+  // ours and clobber the clipboard.
+  if (ctrl && k.toLowerCase() === 'c') { e.preventDefault(); copySelection(); return; }
+  if (ctrl && k.toLowerCase() === 'x') { e.preventDefault(); copySelection(true); clearSelection(); return; }
   if (ctrl && k.toLowerCase() === 'v') return;
   if (ctrl && k === 'Home') {                    // Ctrl+Home -> jump to A1 (top-left)
     e.preventDefault(); selectCell(0, 0, e.shiftKey); return;
@@ -1635,7 +1637,10 @@ function shiftRefs(body, dr, dc) {
   return masked.replace(/(\d+)/g, (m, i) => strs[+i]);
 }
 
-function copySelection(isCut) {
+// Fill the internal buffer from the current selection and return the plain text form.
+// Split out from copySelection so the 'copy' event handler can reuse it without
+// re-entering writeClipboard (which itself fires a copy event).
+function buildClip(isCut) {
   const r0 = Math.min(sel.r, rangeEnd.r), r1 = Math.max(sel.r, rangeEnd.r);
   const c0 = Math.min(sel.c, rangeEnd.c), c1 = Math.max(sel.c, rangeEnd.c);
   const cells = [], rowsText = [];
@@ -1645,9 +1650,44 @@ function copySelection(isCut) {
     cells.push(rawRow); rowsText.push(txtRow.join('\t'));
   }
   const text = rowsText.join('\n');
-  clip = { r0, c0, cells, text, cut: !!isCut };          // keep raw formulas for in-app paste
-  navigator.clipboard?.writeText(text).catch(() => {});  // computed values for external apps
+  clip = { r0, c0, cells, text, cut: !!isCut };   // keep raw formulas for in-app paste
+  return text;                                    // computed values for external apps
 }
+// Put text on the OS clipboard. navigator.clipboard.writeText needs clipboard permission
+// AND a focused document, and rejects outright on some pages (notably file://) — swallowing
+// that rejection left the OS clipboard holding whatever was there before, so Ctrl+C appeared
+// to do nothing and a later Ctrl+V pasted stale content. execCommand('copy') over a hidden
+// textarea is synchronous, needs no permission and works from a plain file:// page, so it is
+// the primary path; the async API is only the fallback.
+function writeClipboard(text) {
+  const ta = document.createElement('textarea');
+  ta.value = text;
+  ta.setAttribute('readonly', '');
+  ta.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:1px;height:1px;opacity:0;';
+  document.body.appendChild(ta);
+  const prev = document.activeElement;
+  let ok = false;
+  // While this runs, activeElement is the textarea, so the 'copy' listener below bails out
+  // and the browser copies the textarea's contents — no recursion.
+  try { ta.select(); ta.setSelectionRange(0, ta.value.length); ok = document.execCommand('copy'); }
+  catch (e) { ok = false; }
+  ta.remove();
+  if (prev && prev.focus) prev.focus({ preventScroll: true });
+  if (!ok) navigator.clipboard?.writeText(text).catch(() => {});
+  return ok;
+}
+function copySelection(isCut) { writeClipboard(buildClip(isCut)); }
+// Ctrl+C when focus is outside the grid (e.g. just after clicking a toolbar button) never
+// reaches the grid's keydown handler. Serve the clipboard from the cell selection here so
+// the copy still works rather than silently leaving stale content behind. Text fields keep
+// their native copy — that's how you copy out of the formula bar.
+document.addEventListener('copy', e => {
+  if (editing || !e.clipboardData) return;
+  const ae = document.activeElement;
+  if (ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA' || ae.isContentEditable)) return;
+  e.clipboardData.setData('text/plain', buildClip(false));
+  e.preventDefault();
+});
 
 // Paste the internal buffer, rewriting relative refs by (dr,dc). A cut moves refs unchanged.
 function pasteBlock(cells, dr, dc) {
