@@ -1176,6 +1176,15 @@ function commitEdit(value) {
   editing = null; render();
 }
 function focusGrid() { gridWrap.focus({ preventScroll: true }); }
+// Commit an in-flight edit from wherever it actually lives. An edit can be held by the
+// inline cell editor OR by the formula bar (focusing it sets `editing`), and mousedown
+// beats blur — so defaulting to '' here would wipe the cell whenever the user was only
+// in the formula bar and clicked away.
+function commitActiveEdit() {
+  if (!editing) return;
+  const inp = gridEl.querySelector('.cell-input');
+  commitEdit(inp ? inp.value : formulaInput.value);
+}
 // Last used column in row r (for Ctrl+Right); falls back to the last column if the row is empty.
 function rowEndCol(r) {
   let mc = -1;
@@ -1201,7 +1210,7 @@ gridEl.addEventListener('mousedown', e => {
   if (e.target.closest('th.corner')) { selectAll(); focusGrid(); return; }   // top-left cell = select all
   const td = e.target.closest('td'), th = e.target.closest('th.colhead'), rh = e.target.closest('th.rowhead');
   if (td) {
-    if (editing) commitEdit(gridEl.querySelector('.cell-input')?.value ?? '');
+    commitActiveEdit();
     mouseDown = true; dragMode = 'cell'; selectCell(+td.dataset.r, +td.dataset.c, e.shiftKey); focusGrid();
   } else if (th) {
     const c = +th.dataset.c;
@@ -1803,7 +1812,7 @@ function renderTabs() {
   bar.appendChild(add);
 }
 function switchSheet(i) {
-  if (editing) commitEdit(gridEl.querySelector('.cell-input')?.value ?? '');
+  commitActiveEdit();
   workbook.active = i; sel = { r: 0, c: 0 }; rangeEnd = { r: 0, c: 0 };
   renderTabs(); render(); focusGrid();
 }
