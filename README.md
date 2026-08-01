@@ -1,4 +1,6 @@
-# 📊 MagikSheetz
+<img src="logo.png" alt="MagikSheetz logo" width="80" align="left">
+
+# MagikSheetz
 
 A fast, self-contained spreadsheet application that runs entirely in your browser from a **single HTML file** — no build step, no server, no install. Open `index.html` and start working.
 
