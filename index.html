@@ -1127,6 +1127,13 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape') hideColorPop
 function selectCell(r, c, extend) {
   r = Math.max(0, Math.min(S().numRows - 1, r));
   c = Math.max(0, Math.min(S().numCols - 1, c));
+  // An active filter can hide the row we're landing on — including the one just edited, if the
+  // new value no longer matches. Settle on the nearest visible row so the cursor never ends up
+  // on a row that isn't rendered, which reads as the selection vanishing.
+  if (isRowHidden(r)) {
+    const down = nextVisibleRow(r, 1);
+    r = isRowHidden(down) ? nextVisibleRow(r, -1) : down;
+  }
   selKind = 'cell';
   if (extend) rangeEnd = { r, c };
   else { sel = { r, c }; rangeEnd = { r, c }; }
@@ -1141,7 +1148,10 @@ function scrollVertical(r) {
   const h0 = rowHeights[0] || 22, viewH = gridWrap.clientHeight || 600;
   // region-relative offset of row r (accounts for any expanded detail rows above it)
   const vr = (lastVisual && lastVisual.rowTop && (r in lastVisual.rowTop)) ? lastVisual : buildVisualRows(sh);
-  const top = vr.rowTop[r] != null ? vr.rowTop[r] : 0;
+  // Only visible rows get a rowTop. A hidden one used to fall back to 0 and yank the view to
+  // the top of the sheet; there is nothing to scroll to, so stay put.
+  if (vr.rowTop[r] == null) return;
+  const top = vr.rowTop[r];
   const rH = rowHeights[r] || 22, contentTop = HEADER_H + h0 + top;
   if (contentTop - gridWrap.scrollTop < HEADER_H + h0) gridWrap.scrollTop = Math.max(0, top);
   else if (contentTop + rH - gridWrap.scrollTop > viewH) gridWrap.scrollTop = contentTop + rH - viewH;
