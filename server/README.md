@@ -120,6 +120,12 @@ than that. Binding to a non-loopback address usually needs a URL ACL reservation
 first; if the server fails to start, it prints the exact
 `netsh http add urlacl ...` command to run.
 
+If that `netsh` command itself fails (e.g. `Error: 50 The request is not
+supported`), the simplest fix is to skip the reservation entirely: HTTP.sys only
+requires a URL ACL for non-administrator processes, so running the server itself
+from an **elevated** PowerShell (Run as Administrator) lets it bind a
+non-loopback prefix directly, no `netsh` step needed.
+
 ## Notes
 
 - First `powershell.exe` launch can be slow (cold start / antivirus). For faster
