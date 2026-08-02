@@ -237,8 +237,11 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block;
     font-family: Consolas, "Courier New", monospace; font-size: 12px;
   }
-  .ps-hist-menu .tb-sep { height: 1px; background: var(--border); margin: 4px 2px; }
-  .ps-hist-menu .tb-empty { padding: 8px 12px; color: var(--comment); font-size: 12px; }
+  .tb-menu .tb-sep { height: 1px; background: var(--border); margin: 4px 2px; }
+  .tb-menu .tb-empty { padding: 8px 12px; color: var(--comment); font-size: 12px; }
+  .tb-menu .tb-menu-label { padding: 5px 10px 2px; font-size: 10.5px; color: var(--comment); text-transform: uppercase; letter-spacing: .03em; }
+  .tb-menu .tb-item.recent-item span:nth-child(2) { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .tb-menu.file-menu { min-width: 240px; max-width: min(360px, calc(100vw - 12px)); }
   .ps-status {
     padding: 5px 8px; font-size: 11.5px; white-space: nowrap; align-self: center; max-width: 40%;
     overflow: hidden; text-overflow: ellipsis; flex-shrink: 0;
@@ -465,11 +468,12 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
   <!-- File -->
   <span class="tb-group">
     <button class="tb tb-drop" title="File">📁<span class="caret">▾</span></button>
-    <div class="tb-menu pop-anim">
+    <div class="tb-menu pop-anim file-menu">
       <button class="tb-item" id="btnNew" title="New workbook"><span class="i">🆕</span><span>New workbook</span></button>
       <label class="tb-item" id="btnOpen" title="Open .xlsx / .xls / .csv"><span class="i">📂</span><span>Open…</span><input type="file" id="fileInput" accept=".xlsx,.xls,.csv"></label>
       <button class="tb-item" id="btnSaveXlsx" title="Save as .xlsx (all sheets)"><span class="i">💾</span><span>Save as XLSX</span></button>
       <button class="tb-item" id="btnSaveCsv" title="Save current sheet as .csv"><span class="i">📄</span><span>Save as CSV</span></button>
+      <div id="recentFilesSection"></div>
     </div>
   </span>
   <!-- Clipboard -->
@@ -604,7 +608,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
              colWidths:{c:px}, numRows, numCols, sortState }
    ===================================================================== */
 
-const APP_VERSION = '1.0.11';
+const APP_VERSION = '1.0.12';
 const MIN_ROWS = 100, MIN_COLS = 26;
 const HEADER_H = 24, ROWHEAD_W = 42;   // column-header height / row-header width (for scroll math)
 let _lastHeadH = 0;                    // cached column-header height for the frozen-row sticky offset
@@ -2205,20 +2209,176 @@ document.getElementById('fileInput').addEventListener('change', e => {
   if (isCsv) reader.readAsText(file); else reader.readAsArrayBuffer(file);
   e.target.value = '';
 });
-function exportFile(type) {
+
+/* =====================================================================
+   RECENT FILES (File System Access API — Chrome/Edge only)
+   A plain file <input> never gives back a reusable handle, so a "recent
+   files" list can either show names as a memory aid or, where supported,
+   actually reopen/re-save with one click. We do the latter: file handles
+   go in IndexedDB (they aren't string-serializable, so localStorage/cookies
+   can't hold them); lightweight metadata (name/kind/timestamp) lives in
+   localStorage for fast synchronous list rendering. Falls back to the
+   classic <input type=file> / direct-download behavior everywhere else.
+   ===================================================================== */
+const FSA_SUPPORTED = 'showOpenFilePicker' in window && 'showSaveFilePicker' in window;
+const RECENTS_KEY = 'magiksheetz.recentFiles';
+const RECENTS_MAX = 10;
+
+function loadRecents() {
+  try { const a = JSON.parse(localStorage.getItem(RECENTS_KEY)); return Array.isArray(a) ? a : []; }
+  catch { return []; }
+}
+function saveRecents() { localStorage.setItem(RECENTS_KEY, JSON.stringify(recentFiles)); }
+let recentFiles = loadRecents();
+
+function openHandleDB() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open('magiksheetz', 1);
+    req.onupgradeneeded = () => { req.result.createObjectStore('fileHandles'); };
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+async function putHandle(id, handle) {
+  const db = await openHandleDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction('fileHandles', 'readwrite');
+    tx.objectStore('fileHandles').put(handle, id);
+    tx.oncomplete = () => resolve(); tx.onerror = () => reject(tx.error);
+  });
+}
+async function getHandle(id) {
+  const db = await openHandleDB();
+  return new Promise((resolve, reject) => {
+    const req = db.transaction('fileHandles', 'readonly').objectStore('fileHandles').get(id);
+    req.onsuccess = () => resolve(req.result || null); req.onerror = () => reject(req.error);
+  });
+}
+async function deleteHandle(id) {
+  const db = await openHandleDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction('fileHandles', 'readwrite');
+    tx.objectStore('fileHandles').delete(id);
+    tx.oncomplete = () => resolve(); tx.onerror = () => reject(tx.error);
+  });
+}
+
+function pushRecent(name, kind, handle) {
+  const id = 'r' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+  recentFiles = recentFiles.filter(r => !(r.name === name && r.kind === kind));   // de-dup same name+kind, move to top
+  recentFiles.unshift({ id, name, kind, ts: Date.now() });
+  const dropped = recentFiles.length > RECENTS_MAX ? recentFiles.splice(RECENTS_MAX) : [];
+  saveRecents();
+  putHandle(id, handle).catch(() => {});
+  dropped.forEach(r => deleteHandle(r.id).catch(() => {}));
+  renderRecentFilesMenu();
+}
+function removeRecentEntry(id) {
+  recentFiles = recentFiles.filter(r => r.id !== id);
+  saveRecents();
+  deleteHandle(id).catch(() => {});
+  renderRecentFilesMenu();
+}
+function renderRecentFilesMenu() {
+  const el = document.getElementById('recentFilesSection');
+  el.innerHTML = '';
+  if (!FSA_SUPPORTED || !recentFiles.length) return;
+  const sep = document.createElement('div'); sep.className = 'tb-sep'; el.appendChild(sep);
+  const label = document.createElement('div'); label.className = 'tb-menu-label'; label.textContent = 'Recent files'; el.appendChild(label);
+  recentFiles.forEach(r => {
+    const btn = document.createElement('button');
+    btn.className = 'tb-item recent-item'; btn.title = r.name;
+    btn.innerHTML = `<span class="i">${r.kind === 'save' ? '💾' : '📂'}</span><span>${escapeHtml(r.name)}</span>`;
+    btn.onclick = () => openRecent(r);
+    el.appendChild(btn);
+  });
+  const clearBtn = document.createElement('button');
+  clearBtn.className = 'tb-item'; clearBtn.textContent = '✕ Clear recent files';
+  clearBtn.onclick = () => {
+    const ids = recentFiles.map(r => r.id);
+    recentFiles = []; saveRecents(); ids.forEach(id => deleteHandle(id).catch(() => {}));
+    renderRecentFilesMenu();
+  };
+  el.appendChild(clearBtn);
+}
+renderRecentFilesMenu();
+
+async function openFromHandle(handle) {
+  const file = await handle.getFile();
+  currentFileName = file.name; document.getElementById('fileName').textContent = file.name;
+  const isCsv = /\.csv$/i.test(file.name);
+  const data = isCsv ? await file.text() : await file.arrayBuffer();
+  const wb = XLSX.read(data, { type: isCsv ? 'string' : 'array' });
+  loadWorkbook(wb);
+  pushRecent(file.name, 'open', handle);
+}
+async function saveToHandle(handle, type) {
+  const wb = buildExportWorkbook(type);
+  const bytes = XLSX.write(wb, { bookType: type === 'csv' ? 'csv' : 'xlsx', type: 'array' });
+  const writable = await handle.createWritable();
+  await writable.write(bytes);
+  await writable.close();
+  currentFileName = handle.name; document.getElementById('fileName').textContent = handle.name;
+  pushRecent(handle.name, 'save', handle);
+}
+async function openRecent(r) {
+  const handle = await getHandle(r.id);
+  if (!handle) {
+    alert(`"${r.name}" isn't available anymore (its file reference may be from a different browser session).`);
+    removeRecentEntry(r.id);
+    return;
+  }
+  const mode = r.kind === 'save' ? 'readwrite' : 'read';
+  try {
+    let perm = await handle.queryPermission({ mode });
+    if (perm !== 'granted') perm = await handle.requestPermission({ mode });
+    if (perm !== 'granted') { alert(`Permission to access "${r.name}" was not granted.`); return; }
+    if (r.kind === 'open') await openFromHandle(handle);
+    else await saveToHandle(handle, /\.csv$/i.test(r.name) ? 'csv' : 'xlsx');
+  } catch (err) { alert(`Failed to access "${r.name}": ` + err.message); }
+}
+if (FSA_SUPPORTED) {
+  document.getElementById('btnOpen').addEventListener('click', async e => {
+    e.preventDefault();   // stop the wrapped <input type=file> from also opening
+    try {
+      const [handle] = await window.showOpenFilePicker({
+        excludeAcceptAllOption: false,
+        types: [{ description: 'Spreadsheets', accept: { 'application/octet-stream': ['.xlsx', '.xls', '.csv'] } }],
+      });
+      await openFromHandle(handle);
+    } catch (err) { if (err.name !== 'AbortError') alert('Failed to open file: ' + err.message); }
+  });
+}
+
+function buildExportWorkbook(type) {
   const wb = XLSX.utils.book_new();
-  const base = currentFileName.replace(/\.(xlsx|xls|csv)$/i, '') || 'spreadsheet';
   if (type === 'csv') {
     const ws = XLSX.utils.aoa_to_sheet(sheetToAOA(S()));
     XLSX.utils.book_append_sheet(wb, ws, S().name);
-    XLSX.writeFile(wb, base + '.csv', { bookType: 'csv' });
   } else {
     workbook.sheets.forEach(sh => {
       const ws = XLSX.utils.aoa_to_sheet(sheetToAOA(sh));
       let nm = sh.name.replace(/[\\/?*:\[\]]/g, '').slice(0, 31) || 'Sheet';
       XLSX.utils.book_append_sheet(wb, ws, nm);
     });
-    XLSX.writeFile(wb, base + '.xlsx', { bookType: 'xlsx' });
+  }
+  return wb;
+}
+async function exportFile(type) {
+  const base = currentFileName.replace(/\.(xlsx|xls|csv)$/i, '') || 'spreadsheet';
+  const bookType = type === 'csv' ? 'csv' : 'xlsx';
+  const suggestedName = base + '.' + bookType;
+  if (FSA_SUPPORTED) {
+    try {
+      const handle = await window.showSaveFilePicker({
+        suggestedName,
+        types: [{ description: bookType.toUpperCase(), accept: { 'application/octet-stream': ['.' + bookType] } }],
+      });
+      await saveToHandle(handle, type);
+    } catch (err) { if (err.name !== 'AbortError') alert('Failed to save file: ' + err.message); }
+  } else {
+    const wb = buildExportWorkbook(type);
+    XLSX.writeFile(wb, suggestedName, { bookType });
   }
 }
 

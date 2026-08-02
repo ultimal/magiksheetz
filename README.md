@@ -12,6 +12,7 @@ A fast, self-contained spreadsheet application that runs entirely in your browse
 - **Open** `.xlsx`, `.xls`, and `.csv` files (via [SheetJS](https://sheetjs.com))
 - **Save** the workbook as `.xlsx` (all sheets) or the current sheet as `.csv`
 - Multi-sheet workbooks with tabs (add, rename, delete, and cycle between sheets)
+- **Recent files** (Chrome/Edge only) — the File menu remembers files you've opened or saved and lets you reopen or re-save to them with one click, persisted across sessions. This needs the browser's File System Access API to get a reusable reference to a file, which Firefox and Safari don't implement; there, Open/Save fall back to the classic file picker/download with no recent-files list.
 
 ### Editing & formulas
 - Click / double-click / `Enter` / `F2` or just start typing to edit a cell
