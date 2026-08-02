@@ -8,7 +8,8 @@
     * Binds to http://localhost:<port> only (never exposed to the network).
     * Every /run request must carry the shared token (printed on startup) in the
       "X-MagikSheetz-Token" header, so a random web page can't drive it.
-    * The Origin header is checked (only null / localhost / 127.0.0.1 allowed).
+    * The Origin header is checked (null / localhost / 127.0.0.1, plus anything
+      you explicitly add with -AllowedOrigins — see below).
     * Optional -Confirm prompts you in this console before each command runs.
     * This still executes commands on your machine. Run it only for your own use,
       keep the token secret, and consider editing Invoke-ShellCommand to an
@@ -17,6 +18,12 @@
   USAGE:
     powershell -ExecutionPolicy Bypass -File .\magiksheetz-server.ps1
     powershell -ExecutionPolicy Bypass -File .\magiksheetz-server.ps1 -Port 8787 -Confirm
+
+    # Let a copy of MagikSheetz hosted elsewhere (e.g. GitHub Pages) reach this
+    # server. The page still only works if it's loaded in a browser on THIS
+    # machine — the server only ever listens on localhost — so it's safe to
+    # allow-list an origin you trust (like your own GitHub Pages deployment):
+    powershell -ExecutionPolicy Bypass -File .\magiksheetz-server.ps1 -AllowedOrigins "https://youruser.github.io"
 
   API:
     GET  /ping                      -> { ok, server, version }
@@ -27,19 +34,27 @@
 
 [CmdletBinding()]
 param(
-  [int]    $Port           = 8787,
-  [string] $Token          = ([guid]::NewGuid().ToString('N')),
-  [int]    $TimeoutSeconds = 60,
-  [switch] $Confirm
+  [int]      $Port           = 8787,
+  [string]   $Token          = ([guid]::NewGuid().ToString('N')),
+  [int]      $TimeoutSeconds = 60,
+  [switch]   $Confirm,
+  # Extra exact origins to trust beyond the built-in localhost/127.0.0.1/file:// allowance,
+  # e.g. -AllowedOrigins "https://youruser.github.io" for a copy hosted on GitHub Pages.
+  [string[]] $AllowedOrigins = @()
 )
 
 $ErrorActionPreference = 'Stop'
+$script:AllowedOriginsNormalized = @($AllowedOrigins | ForEach-Object { $_.TrimEnd('/') })
 
 # ---- helpers ---------------------------------------------------------------
 
 function Test-AllowedOrigin([string]$origin) {
   if ([string]::IsNullOrEmpty($origin) -or $origin -eq 'null') { return $true }   # file:// pages
-  try { $u = [Uri]$origin; return @('localhost', '127.0.0.1') -contains $u.Host }
+  try {
+    $u = [Uri]$origin
+    if (@('localhost', '127.0.0.1') -contains $u.Host) { return $true }
+    return $script:AllowedOriginsNormalized -contains $origin.TrimEnd('/')
+  }
   catch { return $false }
 }
 
@@ -50,6 +65,10 @@ function Write-JsonResponse($ctx, [int]$status, $obj, [string]$allowOrigin) {
   $res.Headers['Vary'] = 'Origin'
   $res.Headers['Access-Control-Allow-Headers'] = 'Content-Type, X-MagikSheetz-Token'
   $res.Headers['Access-Control-Allow-Methods'] = 'POST, GET, OPTIONS'
+  # Chrome's Private Network Access check gates ANY request from a public-address-space
+  # page (e.g. a github.io origin) into a local address space (localhost) behind this
+  # header on the preflight response, even for a plain GET with no custom headers.
+  $res.Headers['Access-Control-Allow-Private-Network'] = 'true'
   $json  = $obj | ConvertTo-Json -Depth 6 -Compress
   $bytes = [Text.Encoding]::UTF8.GetBytes($json)
   $res.ContentType = 'application/json; charset=utf-8'
@@ -125,6 +144,9 @@ Write-Host "  MagikSheetz local command server" -ForegroundColor Green
 Write-Host "  Listening on $prefix  (loopback only)"
 Write-Host "  Token: " -NoNewline; Write-Host $Token -ForegroundColor Cyan
 Write-Host "  -> Paste this token into MagikSheetz to authorize requests."
+if ($script:AllowedOriginsNormalized.Count) {
+  Write-Host "  Extra allowed origins: $($script:AllowedOriginsNormalized -join ', ')" -ForegroundColor Cyan
+}
 if ($Confirm) { Write-Host "  Confirm mode ON: you'll be asked before each command runs." -ForegroundColor Yellow }
 Write-Host "  Press Ctrl+C to stop."
 Write-Host ""

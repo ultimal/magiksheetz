@@ -187,9 +187,9 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
   .color-pop .cp-reset:hover { background: var(--comment); }
 
   /* ---------- Formula bar ---------- */
+  .bars-row { display: flex; align-items: stretch; border-bottom: 1px solid var(--border); background: var(--bg-dark); }
   .formula-bar {
-    display: flex; align-items: stretch; border-bottom: 1px solid var(--border);
-    background: var(--bg-dark);
+    display: flex; align-items: stretch; flex: 1 1 50%; min-width: 0;
   }
   .name-box {
     width: 90px; border: none; border-right: 1px solid var(--border); padding: 5px 8px;
@@ -200,6 +200,29 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
     flex: 1; border: none; padding: 5px 8px; font-size: 13px; outline: none;
     font-family: Consolas, "Courier New", monospace; background: var(--bg-dark); color: var(--fg);
   }
+
+  /* ---------- PowerShell bar (right half; only shown while the command server is connected) ---------- */
+  .ps-bar {
+    display: none; flex: 1 1 50%; min-width: 0; align-items: stretch;
+    border-left: 1px solid var(--border);
+  }
+  .ps-bar.visible { display: flex; }
+  .ps-icon {
+    padding: 5px 8px; color: var(--green); font-weight: 700; font-family: Consolas, "Courier New", monospace;
+    border-right: 1px solid var(--border); display: flex; align-items: center; white-space: nowrap;
+  }
+  .ps-input {
+    flex: 1; min-width: 0; border: none; padding: 5px 8px; font-size: 13px; outline: none;
+    font-family: Consolas, "Courier New", monospace; background: var(--bg-dark); color: var(--green);
+  }
+  .ps-input::placeholder { color: var(--comment); }
+  .ps-input:disabled { opacity: .6; }
+  .ps-status {
+    padding: 5px 8px; font-size: 11.5px; white-space: nowrap; align-self: center; max-width: 40%;
+    overflow: hidden; text-overflow: ellipsis; flex-shrink: 0;
+  }
+  .ps-status.ok { color: var(--green); }
+  .ps-status.err { color: var(--red); }
 
   /* ---------- Grid ---------- */
   .grid-wrap { flex: 1; overflow: auto; position: relative; background: var(--bg); outline: none; }
@@ -523,10 +546,17 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
   <button class="tb" id="btnHelp" title="Keyboard shortcuts" style="font-weight:700">?</button>
 </div>
 
-<div class="formula-bar">
-  <input class="name-box" id="nameBox" value="A1" spellcheck="false">
-  <span class="fx">fx</span>
-  <input class="formula-input" id="formulaInput" spellcheck="false" placeholder="Enter a value or =formula">
+<div class="bars-row">
+  <div class="formula-bar">
+    <input class="name-box" id="nameBox" value="A1" spellcheck="false">
+    <span class="fx">fx</span>
+    <input class="formula-input" id="formulaInput" spellcheck="false" placeholder="Enter a value or =formula">
+  </div>
+  <div class="ps-bar" id="psBar">
+    <span class="ps-icon" title="Runs on the connected command server; the result overwrites the current sheet">PS&gt;</span>
+    <input class="ps-input" id="psInput" spellcheck="false" placeholder="PowerShell command… Enter to run (overwrites this sheet), e.g. Get-Process">
+    <span class="ps-status" id="psStatus"></span>
+  </div>
 </div>
 
 <div class="grid-wrap" id="gridWrap">
@@ -2329,6 +2359,8 @@ gridEl.addEventListener('contextmenu', e => {
       { sep: true },
       { label: hasLookup ? '🔗 Edit lookup…' : '🔗 Look up from another sheet…', fn: () => openLookupDialog(c) },
       { label: '🔗 Remove lookup', disabled: !hasLookup, fn: () => removeLookup(c) },
+      { sep: true },
+      { label: '🔁 Convert units…', fn: () => openUnitConvertDialog(c) },
     ]);
   } else if (rh) {
     const r = +rh.dataset.r;
@@ -2535,6 +2567,112 @@ function openLookupDialog(col) {
 }
 
 /* =====================================================================
+   COLUMN UNIT CONVERSION (kilobytes/megabytes/... , kbps/Mbps/MBps/...)
+   ===================================================================== */
+// Data size is binary (1024-based, matching how Windows/PowerShell report KB/MB/GB/TB).
+// Data rate is decimal (1000-based, matching networking convention); *Bps units are
+// byte-rates, so they carry an extra *8 versus the equivalent bit-rate.
+const UNIT_GROUPS = [
+  { name: 'Data size', units: [['B', 1], ['KB', 1024], ['MB', 1024 ** 2], ['GB', 1024 ** 3], ['TB', 1024 ** 4], ['PB', 1024 ** 5]] },
+  {
+    name: 'Data rate', units: [
+      ['bps', 1], ['Kbps', 1e3], ['Mbps', 1e6], ['Gbps', 1e9], ['Tbps', 1e12],
+      ['Bps', 8], ['KBps', 8e3], ['MBps', 8e6], ['GBps', 8e9], ['TBps', 8e12],
+    ]
+  },
+];
+const UNIT_INFO = {};
+UNIT_GROUPS.forEach(g => g.units.forEach(([name, factor]) => { UNIT_INFO[name] = { factor, group: g }; }));
+
+function openUnitConvertDialog(col) {
+  hideMenu();
+  const sh = S();
+  const overlay = document.createElement('div'); overlay.className = 'modal-overlay';
+  const box = document.createElement('div'); box.className = 'modal';
+  const h = document.createElement('h3'); h.textContent = `Convert units — column ${colName(col)}`; box.appendChild(h);
+
+  const hint = document.createElement('div'); hint.className = 'mhint';
+  hint.textContent = 'Reads the numeric value out of each cell in this column, converts it, and overwrites the cell with the result.';
+  box.appendChild(hint);
+
+  const fromRow = document.createElement('div'); fromRow.className = 'mrow';
+  const fromLabel = document.createElement('label'); fromLabel.textContent = 'From'; fromRow.appendChild(fromLabel);
+  const fromSel = document.createElement('select');
+  UNIT_GROUPS.forEach(g => {
+    const og = document.createElement('optgroup'); og.label = g.name;
+    g.units.forEach(([name]) => { const o = document.createElement('option'); o.value = name; o.textContent = name; og.appendChild(o); });
+    fromSel.appendChild(og);
+  });
+  fromSel.value = 'KB';
+  fromRow.appendChild(fromSel); box.appendChild(fromRow);
+
+  const toRow = document.createElement('div'); toRow.className = 'mrow';
+  const toLabel = document.createElement('label'); toLabel.textContent = 'To'; toRow.appendChild(toLabel);
+  const toSel = document.createElement('select');
+  toRow.appendChild(toSel); box.appendChild(toRow);
+
+  function populateTo() {
+    const grp = UNIT_INFO[fromSel.value].group;
+    const prevTo = toSel.value;
+    toSel.innerHTML = '';
+    grp.units.forEach(([name]) => { const o = document.createElement('option'); o.value = name; o.textContent = name; toSel.appendChild(o); });
+    if (prevTo && UNIT_INFO[prevTo] && UNIT_INFO[prevTo].group === grp && prevTo !== fromSel.value) {
+      toSel.value = prevTo;
+    } else {
+      const idx = grp.units.findIndex(([n]) => n === fromSel.value);
+      toSel.value = grp.units[(idx + 1) % grp.units.length][0];
+    }
+  }
+  fromSel.onchange = populateTo;
+  populateTo();
+  toSel.value = 'MB';
+
+  const hdrRow = document.createElement('div'); hdrRow.className = 'mrow';
+  const hdrLabel = document.createElement('label'); hdrLabel.style.cssText = 'display:flex;align-items:center;gap:6px;cursor:pointer;';
+  const hdrChk = document.createElement('input'); hdrChk.type = 'checkbox'; hdrChk.checked = true;
+  hdrLabel.appendChild(hdrChk); hdrLabel.appendChild(document.createTextNode('First row is a header (skip it)'));
+  hdrRow.appendChild(hdrLabel); box.appendChild(hdrRow);
+
+  const status = document.createElement('div'); status.className = 'mstatus'; box.appendChild(status);
+
+  const foot = document.createElement('div'); foot.className = 'mfoot';
+  const cancel = document.createElement('button'); cancel.textContent = 'Cancel';
+  const run = document.createElement('button'); run.className = 'primary'; run.textContent = 'Convert';
+  foot.appendChild(cancel); foot.appendChild(run); box.appendChild(foot);
+  overlay.appendChild(box); document.body.appendChild(overlay);
+
+  const close = () => { overlay.remove(); document.removeEventListener('keydown', esc); };
+  function esc(ev) { if (ev.key === 'Escape') close(); else if (ev.key === 'Enter') run.click(); }
+  cancel.onclick = close;
+  overlay.addEventListener('mousedown', ev => { if (ev.target === overlay) close(); });
+  document.addEventListener('keydown', esc);
+
+  run.onclick = () => {
+    const from = fromSel.value, to = toSel.value;
+    if (from === to) { status.className = 'mstatus err'; status.textContent = 'Choose two different units.'; return; }
+    const fFrom = UNIT_INFO[from].factor, fTo = UNIT_INFO[to].factor;
+    const startRow = hdrChk.checked ? 1 : 0;
+    const maxRow = usedRows(sh);
+
+    pushUndo();
+    let converted = 0, skipped = 0;
+    for (let r = startRow; r <= maxRow; r++) {
+      const raw = getRawOf(sh, r, col);
+      if (raw === '' || raw == null) continue;
+      const m = String(raw).match(/-?\d+(\.\d+)?/);
+      if (!m) { skipped++; continue; }
+      const result = (parseFloat(m[0]) * fFrom) / fTo;
+      setRaw(r, col, String(Math.round(result * 1e6) / 1e6));
+      converted++;
+    }
+    render();
+    close();
+    if (skipped) alert(`Converted ${converted} value(s); skipped ${skipped} cell(s) with no numeric value.`);
+  };
+  fromSel.focus();
+}
+
+/* =====================================================================
    COMMAND SERVER SETTINGS DIALOG
    ===================================================================== */
 const SERVER_CONFIG_KEY = 'magiksheetz.commandServer';
@@ -2547,6 +2685,28 @@ function loadServerConfig() {
 }
 function saveServerConfig(cfg) { localStorage.setItem(SERVER_CONFIG_KEY, JSON.stringify(cfg)); }
 let serverConfig = loadServerConfig();
+
+/* Tracks whether the command server currently answers /ping, so the PowerShell
+   bar can appear/disappear as the server is started or stopped. */
+let serverConnected = false;
+const psBarEl = document.getElementById('psBar');
+function setServerConnected(connected) {
+  if (connected === serverConnected) return;
+  serverConnected = connected;
+  psBarEl.classList.toggle('visible', connected);
+}
+async function pingServerOnce() {
+  const cfg = serverConfig;
+  try {
+    const res = await fetch(`http://${cfg.host}:${cfg.port}/ping`);
+    if (!res.ok) return false;
+    const data = await res.json();
+    return !!(data && data.ok);
+  } catch { return false; }
+}
+async function refreshServerStatus() { setServerConnected(await pingServerOnce()); }
+refreshServerStatus();
+setInterval(refreshServerStatus, 10000);
 
 function openSettingsDialog() {
   const cfg = serverConfig;
@@ -2619,6 +2779,7 @@ function openSettingsDialog() {
     const token = tokenInput.value.trim();
     serverConfig = { host, port, token };
     saveServerConfig(serverConfig);
+    refreshServerStatus();
     close();
   };
   hostInput.focus();
@@ -2875,6 +3036,107 @@ try {
   };
 }
 document.getElementById('btnPingColumn').addEventListener('click', openPingColumnDialog);
+
+/* =====================================================================
+   POWERSHELL COMMAND BAR (right half of the formula bar, server-gated)
+   Runs whatever is typed on the command server and drops the resulting
+   table into the current sheet, overwriting it.
+   ===================================================================== */
+const psInput = document.getElementById('psInput');
+const psStatus = document.getElementById('psStatus');
+let psStatusTimer = null;
+function setPsStatus(text, cls) {
+  clearTimeout(psStatusTimer);
+  psStatus.textContent = text || '';
+  psStatus.className = 'ps-status' + (cls ? ' ' + cls : '');
+  if (cls === 'ok') psStatusTimer = setTimeout(() => { psStatus.textContent = ''; psStatus.className = 'ps-status'; }, 4000);
+}
+
+/* Runs the user's command server-side and, for each output object, picks the same
+   columns Format-Table would show by default (its DefaultDisplayPropertySet — the
+   set Select-Object also stamps onto its output) rather than dumping every property.
+   That avoids both Format-Table's -AutoSize column-width bugs on calculated
+   properties (e.g. Process.CPU) and JSON dumps of dozens of irrelevant members. */
+const PS_WRAPPER = `
+$ProgressPreference = 'SilentlyContinue'
+try {
+  $__items = @( & { REPLACE_ME } )
+  $__rows = foreach ($__it in $__items) {
+    if ($null -eq $__it) { continue }
+    if ($__it -is [string] -or $__it -is [ValueType]) { [PSCustomObject]@{ Value = $__it }; continue }
+    $__names = $null
+    $__set = $__it.PSStandardMembers.DefaultDisplayPropertySet
+    if ($__set) { $__names = @($__set.ReferencedPropertyNames) }
+    if (-not $__names -and $__it.GetType().Name -eq 'PSCustomObject') {
+      $__names = @($__it.PSObject.Properties | Select-Object -ExpandProperty Name)
+    }
+    if (-not $__names) {
+      $__names = @($__it.PSObject.Properties |
+        Where-Object { $_.MemberType -match 'Property' -and $_.Name -notmatch '^PS(Path|ParentPath|ChildName|Drive|Provider|IsContainer)$' } |
+        Select-Object -First 10 -ExpandProperty Name)
+    }
+    $__row = [ordered]@{}
+    foreach ($__n in $__names) {
+      $__v = $null
+      try { $__v = $__it.$__n } catch {}
+      if ($__v -is [Array]) { $__v = ($__v -join '; ') }
+      $__row[$__n] = if ($null -eq $__v) { '' } else { [string]$__v }
+    }
+    [PSCustomObject]$__row
+  }
+  ConvertTo-Json -InputObject @($__rows) -Compress -Depth 4
+} catch {
+  [Console]::Error.WriteLine($_.Exception.Message)
+  exit 1
+}`.trim();
+
+async function runPsBarCommand() {
+  const cmdText = psInput.value.trim();
+  if (!cmdText) return;
+  psInput.disabled = true;
+  setPsStatus('Running…');
+
+  // Function-form replacer: keeps cmdText literal (e.g. a bare "$_" in a Where-Object
+  // filter) instead of being parsed for $&/$$-style String.replace substitutions.
+  const command = PS_WRAPPER.replace('REPLACE_ME', () => cmdText);
+
+  try {
+    const stdout = await callCommandServer(command);
+    let rows;
+    try { rows = JSON.parse(stdout || '[]'); } catch { throw new Error('Could not parse the server response as JSON.'); }
+    if (!Array.isArray(rows)) rows = rows ? [rows] : [];
+    if (!rows.length) { setPsStatus('Command returned no output.', 'err'); return; }
+
+    // Union of keys across all rows, in order of first appearance (rows can be
+    // heterogeneous, e.g. mixed object types on the same pipeline).
+    const headers = [];
+    const seen = new Set();
+    rows.forEach(row => { if (row && typeof row === 'object') Object.keys(row).forEach(k => { if (!seen.has(k)) { seen.add(k); headers.push(k); } }); });
+
+    pushUndo();
+    const sh = S();
+    sh.data = {}; sh.fmt = {}; sh.filters = {}; sh.lookups = {}; sh.sortState = { col: null, dir: 0 };
+    headers.forEach((h, c) => { sh.data[key(0, c)] = { raw: h }; });
+    rows.forEach((row, r) => {
+      headers.forEach((h, c) => {
+        const v = row[h];
+        if (v !== undefined && v !== null && v !== '') sh.data[key(r + 1, c)] = { raw: String(v) };
+      });
+    });
+    sh.numRows = Math.max(MIN_ROWS, rows.length + 11);
+    sh.numCols = Math.max(MIN_COLS, headers.length + 3);
+    sel = { r: 0, c: 0 }; rangeEnd = { r: 0, c: 0 };
+    renderTabs(); render();
+    setPsStatus(`${rows.length} row(s) × ${headers.length} column(s) → ${sh.name}`, 'ok');
+    psInput.value = '';
+  } catch (err) {
+    setPsStatus(err.message, 'err');
+  } finally {
+    psInput.disabled = false;
+    psInput.focus();
+  }
+}
+psInput.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); runPsBarCommand(); } });
 
 /* =====================================================================
    TOOLBAR DROPDOWN GROUPS
