@@ -227,7 +227,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
      where the button happens to sit. Opacity/transform/width all animate. */
   .ps-hist-menu {
     right: 6px; left: auto; max-height: 260px; overflow: auto;
-    min-width: 260px; max-width: min(440px, calc(100vw - 12px));
+    max-width: min(440px, calc(100vw - 12px));
     opacity: 0; transform: translateY(-6px);
     transition: opacity .14s ease, transform .14s ease, width .14s ease;
   }
@@ -603,7 +603,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
              colWidths:{c:px}, numRows, numCols, sortState }
    ===================================================================== */
 
-const APP_VERSION = '1.0.9';
+const APP_VERSION = '1.0.10';
 const MIN_ROWS = 100, MIN_COLS = 26;
 const HEADER_H = 24, ROWHEAD_W = 42;   // column-header height / row-header width (for scroll math)
 let _lastHeadH = 0;                    // cached column-header height for the frozen-row sticky offset
@@ -3153,12 +3153,28 @@ function openPsHistMenu() {
     clearBtn.onclick = () => { psHistory = []; savePsHistory(); psHistPos = 0; psDraft = ''; closePsHistMenu(); };
     psHistMenu.appendChild(clearBtn);
   }
-  psHistMenu.style.display = 'block';
   // Anchored to the screen edge via CSS `right`; only `top` needs computing here.
   const r = psHistBtn.getBoundingClientRect();
   psHistMenu.style.top = (r.bottom + 3) + 'px';
+
+  // Measure the width the content actually needs (governed by the CSS min/max-width
+  // rules) before anything is visible, then collapse to a button-sized baseline and
+  // transition up to that — so it only grows/animates leftward when there's enough
+  // text to need the room; with nothing to show, it just stays put at the edge.
+  const BASE_W = 40;
+  psHistMenu.style.transition = 'none';
+  psHistMenu.style.width = '';
+  psHistMenu.style.display = 'block';
+  const naturalW = Math.max(BASE_W, psHistMenu.offsetWidth);
+  psHistMenu.style.width = BASE_W + 'px';
+  void psHistMenu.offsetWidth;   // force a reflow so the collapsed width is committed before animating away from it
+  psHistMenu.style.transition = '';
+
   psHistBtn.classList.add('open');
-  requestAnimationFrame(() => requestAnimationFrame(() => psHistMenu.classList.add('show')));
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    psHistMenu.classList.add('show');
+    psHistMenu.style.width = naturalW + 'px';
+  }));
 }
 psHistBtn.addEventListener('click', e => {
   e.stopPropagation();
