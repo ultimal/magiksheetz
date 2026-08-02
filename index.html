@@ -594,7 +594,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
              colWidths:{c:px}, numRows, numCols, sortState }
    ===================================================================== */
 
-const APP_VERSION = '1.0.6';
+const APP_VERSION = '1.0.7';
 const MIN_ROWS = 100, MIN_COLS = 26;
 const HEADER_H = 24, ROWHEAD_W = 42;   // column-header height / row-header width (for scroll math)
 let _lastHeadH = 0;                    // cached column-header height for the frozen-row sticky offset
@@ -950,11 +950,13 @@ function render() {
       let inner = escapeHtml(formatCell(val, f));
       if (r === 0) inner += `<span class="filter-btn${filters[c] ? ' active' : ''}" data-c="${c}" title="Filter / sort this column">▾</span>`;
       if (hasLk) { const on = expanded[r] === c; inner += `<span class="lookup-btn${on ? ' on' : ''}" data-r="${r}" data-c="${c}" title="Show matching rows from '${escapeHtml(lookups[c].sheet)}'">${on ? '−' : '+'}</span>`; }
-      // Fill handle on the selection's bottom-right cell. Hidden while a selection drag is in
-      // progress (mouseDown with a non-fill drag mode) so it doesn't trail the pointer around
-      // mid-drag — it should only sit fixed at the corner once the selection is settled.
+      // Fill handle on the active cell (sel) — the same cell as the bordered "selected" box —
+      // so it always sits wherever the selection ends, not the rectangle's numeric bottom-right
+      // corner (which is the drag's start, not its end, when dragging left/up). Hidden while a
+      // selection drag is in progress (mouseDown with a non-fill drag mode) so it doesn't trail
+      // the pointer around mid-drag — it should only sit fixed once the selection is settled.
       const selecting = mouseDown && dragMode !== 'fill';
-      if (!editing && !fillPreview && !selecting && r === selR1 && c === selC1) inner += '<span class="fill-handle" title="Drag to fill"></span>';
+      if (!editing && !fillPreview && !selecting && r === sel.r && c === sel.c) inner += '<span class="fill-handle" title="Drag to fill"></span>';
       s += `<td data-r="${r}" data-c="${c}" class="${cls.join(' ')}" style="${style}">${inner}</td>`;
     }
     return s + '</tr>';
