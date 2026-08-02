@@ -581,7 +581,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
              colWidths:{c:px}, numRows, numCols, sortState }
    ===================================================================== */
 
-const APP_VERSION = '1.0.2';
+const APP_VERSION = '1.0.3';
 const MIN_ROWS = 100, MIN_COLS = 26;
 const HEADER_H = 24, ROWHEAD_W = 42;   // column-header height / row-header width (for scroll math)
 let _lastHeadH = 0;                    // cached column-header height for the frozen-row sticky offset
@@ -937,8 +937,11 @@ function render() {
       let inner = escapeHtml(formatCell(val, f));
       if (r === 0) inner += `<span class="filter-btn${filters[c] ? ' active' : ''}" data-c="${c}" title="Filter / sort this column">▾</span>`;
       if (hasLk) { const on = expanded[r] === c; inner += `<span class="lookup-btn${on ? ' on' : ''}" data-r="${r}" data-c="${c}" title="Show matching rows from '${escapeHtml(lookups[c].sheet)}'">${on ? '−' : '+'}</span>`; }
-      // fill handle on the selection's bottom-right cell
-      if (!editing && !fillPreview && r === selR1 && c === selC1) inner += '<span class="fill-handle" title="Drag to fill"></span>';
+      // Fill handle on the selection's bottom-right cell. Hidden while a selection drag is in
+      // progress (mouseDown with a non-fill drag mode) so it doesn't trail the pointer around
+      // mid-drag — it should only sit fixed at the corner once the selection is settled.
+      const selecting = mouseDown && dragMode !== 'fill';
+      if (!editing && !fillPreview && !selecting && r === selR1 && c === selC1) inner += '<span class="fill-handle" title="Drag to fill"></span>';
       s += `<td data-r="${r}" data-c="${c}" class="${cls.join(' ')}" style="${style}">${inner}</td>`;
     }
     return s + '</tr>';
@@ -1371,12 +1374,15 @@ window.addEventListener('mousemove', e => {
   if ((dragDir.x || dragDir.y) && !autoRAF) autoRAF = requestAnimationFrame(autoScrollStep);
 });
 window.addEventListener('mouseup', () => {
+  const wasDragging = mouseDown;
   mouseDown = false; dragDir = { x: 0, y: 0 };
   if (autoRAF) { cancelAnimationFrame(autoRAF); autoRAF = null; }
   if (dragMode === 'fill') {
     const src = fillDrag, tgt = fillPreview;
     fillDrag = null; fillPreview = null; dragMode = 'cell';
     if (tgt) applyFill(src, tgt); else render();   // released inside the source = no-op
+  } else if (wasDragging) {
+    render();   // reveal the fill handle now that the selection drag has settled
   }
 });
 gridEl.addEventListener('dblclick', e => { const td = e.target.closest('td'); if (td) startEdit(+td.dataset.r, +td.dataset.c); });
