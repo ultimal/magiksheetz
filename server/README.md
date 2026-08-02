@@ -20,6 +20,10 @@ powershell -ExecutionPolicy Bypass -File .\server\magiksheetz-server.ps1 -Port 8
 # connecting from a copy of MagikSheetz hosted elsewhere, e.g. GitHub Pages
 # (see "Connecting from a page hosted elsewhere" below before you need this)
 powershell -ExecutionPolicy Bypass -File .\server\magiksheetz-server.ps1 -AllowedOrigins "https://youruser.github.io"
+
+# accept connections from other machines on your network instead of just this one
+# (see "Listening on the network" below before you need this)
+powershell -ExecutionPolicy Bypass -File .\server\magiksheetz-server.ps1 -BindAddress 192.168.1.42
 ```
 
 On startup it prints the **token** — you pass that with every request. `-Confirm`
@@ -48,7 +52,7 @@ makes the server prompt you in its console before running each command.
 
 ## Security model
 
-- **Loopback only** — listens on `http://localhost:<port>`; not reachable from the network.
+- **Loopback only by default** — listens on `http://localhost:<port>`; not reachable from the network unless you pass `-BindAddress`.
 - **Token** — `/run` requires the `X-MagikSheetz-Token` header to equal the server's token, so an arbitrary web page can't drive it.
 - **Origin allow-list** — only `null` (file://), `localhost`, and `127.0.0.1` origins are accepted by default (defends against DNS-rebinding / other sites), plus any exact origins you add with `-AllowedOrigins`.
 - **Isolated execution** — each command runs in a fresh child `powershell.exe`/`cmd.exe` with a timeout (`-TimeoutSeconds`, default 60), so it can't corrupt the server's own state.
@@ -96,6 +100,25 @@ If it still fails, open DevTools → Network on the MagikSheetz page and check t
 a blocked/failed request after a successful-looking preflight usually means the
 browser's local-network permission prompt was dismissed or never shown — reload
 the page and retry.
+
+## Listening on the network
+
+By default `-BindAddress` is `localhost`, so the server is unreachable from other
+machines even if they're on the same network. Passing your machine's LAN IP (or
+`+` for all interfaces) opens it up:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\server\magiksheetz-server.ps1 -BindAddress 192.168.1.42
+```
+
+**Think before you do this.** The only thing standing between "anyone who can
+reach this port" and "runs arbitrary commands on your machine" is the token,
+sent in a header over plain HTTP (no TLS) — no rate limiting, no encryption.
+Only do this on a network you actually trust, prefer your specific LAN IP over
+`+`, and make sure Windows Firewall doesn't allow the port from anything wider
+than that. Binding to a non-loopback address usually needs a URL ACL reservation
+first; if the server fails to start, it prints the exact
+`netsh http add urlacl ...` command to run.
 
 ## Notes
 

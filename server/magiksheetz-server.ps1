@@ -5,7 +5,8 @@
   runs it in an isolated child process, and returns stdout / stderr / exit code.
 
   SECURITY — read this:
-    * Binds to http://localhost:<port> only (never exposed to the network).
+    * Binds to http://localhost:<port> only by default (never exposed to the
+      network) — -BindAddress opts into listening on other interfaces; see below.
     * Every /run request must carry the shared token (printed on startup) in the
       "X-MagikSheetz-Token" header, so a random web page can't drive it.
     * The Origin header is checked (null / localhost / 127.0.0.1, plus anything
@@ -25,6 +26,17 @@
     # allow-list an origin you trust (like your own GitHub Pages deployment):
     powershell -ExecutionPolicy Bypass -File .\magiksheetz-server.ps1 -AllowedOrigins "https://youruser.github.io"
 
+    # Accept connections from other machines. -BindAddress defaults to 'localhost'
+    # (loopback only); set it to your machine's LAN IP, a hostname, or '+' (all
+    # interfaces) to open it up. This means ANYONE who can reach the port and has
+    # the token gets arbitrary command execution on this machine over plain HTTP
+    # (no TLS) — only do this on a network you trust, and prefer your specific LAN
+    # IP over '+' so it isn't reachable from anywhere that can route to you.
+    # Binding to anything other than localhost/127.0.0.1 needs a URL ACL reservation
+    # (the script prints the exact `netsh http add urlacl` command if it's missing)
+    # and a Windows Firewall rule allowing the port.
+    powershell -ExecutionPolicy Bypass -File .\magiksheetz-server.ps1 -BindAddress 192.168.1.42
+
   API:
     GET  /ping                      -> { ok, server, version }
     POST /run                       -> run a command (needs X-MagikSheetz-Token)
@@ -40,7 +52,11 @@ param(
   [switch]   $Confirm,
   # Extra exact origins to trust beyond the built-in localhost/127.0.0.1/file:// allowance,
   # e.g. -AllowedOrigins "https://youruser.github.io" for a copy hosted on GitHub Pages.
-  [string[]] $AllowedOrigins = @()
+  [string[]] $AllowedOrigins = @(),
+  # Address to bind the listener to. Defaults to loopback-only. Set to your LAN IP,
+  # a hostname, or '+' (all interfaces) to accept connections from other machines —
+  # see the security note above before doing that.
+  [string]   $BindAddress    = 'localhost'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -127,21 +143,35 @@ function Invoke-ShellCommand([string]$command, [string]$shell, [string]$cwd, [in
 
 # ---- start the listener ----------------------------------------------------
 
-$prefix = "http://localhost:$Port/"
+$prefix = "http://${BindAddress}:$Port/"
+$isLoopback = @('localhost', '127.0.0.1') -contains $BindAddress
 $listener = [System.Net.HttpListener]::new()
 $listener.Prefixes.Add($prefix)
 try { $listener.Start() }
 catch {
   Write-Host "Failed to start on $prefix" -ForegroundColor Red
   Write-Host $_.Exception.Message
-  Write-Host "If it's an access error, try another -Port, or run once as admin:" -ForegroundColor Yellow
+  if ($isLoopback) {
+    Write-Host "If it's an access error, try another -Port, or run once as admin:" -ForegroundColor Yellow
+  }
+  else {
+    Write-Host "Binding to anything other than localhost/127.0.0.1 usually needs a URL ACL reservation:" -ForegroundColor Yellow
+  }
   Write-Host "  netsh http add urlacl url=$prefix user=$env:USERNAME"
   return
 }
 
 Write-Host ""
 Write-Host "  MagikSheetz local command server" -ForegroundColor Green
-Write-Host "  Listening on $prefix  (loopback only)"
+if ($isLoopback) {
+  Write-Host "  Listening on $prefix  (loopback only)"
+}
+else {
+  Write-Host "  Listening on $prefix" -ForegroundColor Yellow
+  Write-Host "  WARNING: bound to a non-loopback address - reachable from other machines." -ForegroundColor Yellow
+  Write-Host "  Anyone who can reach this port and has the token can run commands on this machine." -ForegroundColor Yellow
+  Write-Host "  Make sure Windows Firewall only allows this port from networks you trust." -ForegroundColor Yellow
+}
 Write-Host "  Token: " -NoNewline; Write-Host $Token -ForegroundColor Cyan
 Write-Host "  -> Paste this token into MagikSheetz to authorize requests."
 if ($script:AllowedOriginsNormalized.Count) {
