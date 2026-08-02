@@ -157,7 +157,7 @@ catch {
   else {
     Write-Host "Binding to anything other than localhost/127.0.0.1 usually needs a URL ACL reservation:" -ForegroundColor Yellow
   }
-  Write-Host "  netsh http add urlacl url=$prefix user=$env:USERNAME"
+  Write-Host "  netsh http add urlacl url=$prefix user=`"$env:USERNAME`""
   return
 }
 
