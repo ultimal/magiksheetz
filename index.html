@@ -594,7 +594,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
              colWidths:{c:px}, numRows, numCols, sortState }
    ===================================================================== */
 
-const APP_VERSION = '1.0.5';
+const APP_VERSION = '1.0.6';
 const MIN_ROWS = 100, MIN_COLS = 26;
 const HEADER_H = 24, ROWHEAD_W = 42;   // column-header height / row-header width (for scroll math)
 let _lastHeadH = 0;                    // cached column-header height for the frozen-row sticky offset
@@ -2684,7 +2684,7 @@ function openUnitConvertDialog(col) {
       const m = String(raw).match(/-?\d+(\.\d+)?/);
       if (!m) { skipped++; continue; }
       const result = (parseFloat(m[0]) * fFrom) / fTo;
-      setRaw(r, col, String(Math.round(result * 1e6) / 1e6));
+      setRaw(r, col, String(Math.floor(result * 100) / 100));
       converted++;
     }
     render();
