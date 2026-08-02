@@ -608,7 +608,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
              colWidths:{c:px}, numRows, numCols, sortState }
    ===================================================================== */
 
-const APP_VERSION = '1.0.13';
+const APP_VERSION = '1.0.14';
 const MIN_ROWS = 100, MIN_COLS = 26;
 const HEADER_H = 24, ROWHEAD_W = 42;   // column-header height / row-header width (for scroll math)
 let _lastHeadH = 0;                    // cached column-header height for the frozen-row sticky offset
@@ -1769,9 +1769,17 @@ function shiftRefs(body, dr, dc) {
 // Fill the internal buffer from the current selection and return the plain text form.
 // Split out from copySelection so the 'copy' event handler can reuse it without
 // re-entering writeClipboard (which itself fires a copy event).
+// Above this many cells, warn before copying: building + writing that much text can take a
+// few seconds and (see writeClipboard below) risks the slow/unreliable execCommand path.
+const LARGE_COPY_CELLS = 100000;
 function buildClip(isCut) {
   const r0 = Math.min(sel.r, rangeEnd.r), r1 = Math.max(sel.r, rangeEnd.r);
   const c0 = Math.min(sel.c, rangeEnd.c), c1 = Math.max(sel.c, rangeEnd.c);
+  const cellCount = (r1 - r0 + 1) * (c1 - c0 + 1);
+  if (cellCount > LARGE_COPY_CELLS) {
+    const ok = confirm(`You're about to copy ${cellCount.toLocaleString()} cells. This may take a few seconds. Continue?`);
+    if (!ok) return null;
+  }
   const cells = [], rowsText = [];
   for (let r = r0; r <= r1; r++) {
     if (isRowHidden(r)) continue; // skip rows hidden by an active filter
@@ -1783,30 +1791,47 @@ function buildClip(isCut) {
   clip = { r0, c0, cells, text, cut: !!isCut };   // keep raw formulas for in-app paste
   return text;                                    // computed values for external apps
 }
-// Put text on the OS clipboard. navigator.clipboard.writeText needs clipboard permission
-// AND a focused document, and rejects outright on some pages (notably file://) — swallowing
-// that rejection left the OS clipboard holding whatever was there before, so Ctrl+C appeared
-// to do nothing and a later Ctrl+V pasted stale content. execCommand('copy') over a hidden
-// textarea is synchronous, needs no permission and works from a plain file:// page, so it is
-// the primary path; the async API is only the fallback.
-function writeClipboard(text) {
-  const ta = document.createElement('textarea');
-  ta.value = text;
-  ta.setAttribute('readonly', '');
-  ta.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:1px;height:1px;opacity:0;';
-  document.body.appendChild(ta);
-  const prev = document.activeElement;
-  let ok = false;
-  // While this runs, activeElement is the textarea, so the 'copy' listener below bails out
-  // and the browser copies the textarea's contents — no recursion.
-  try { ta.select(); ta.setSelectionRange(0, ta.value.length); ok = document.execCommand('copy'); }
-  catch (e) { ok = false; }
-  ta.remove();
-  if (prev && prev.focus) prev.focus({ preventScroll: true });
-  if (!ok) navigator.clipboard?.writeText(text).catch(() => {});
+// Put text on the OS clipboard. navigator.clipboard.writeText needs clipboard permission AND a
+// focused document, and rejects outright on some pages (notably file://) — swallowing that
+// rejection left the OS clipboard holding whatever was there before, so Ctrl+C appeared to do
+// nothing and a later Ctrl+V pasted stale content. execCommand('copy') over a hidden textarea
+// is synchronous, needs no permission, and works from a plain file:// page, so it's the primary
+// path for ordinary-sized copies. But it doesn't scale: selecting a multi-megabyte textarea
+// value is slow, and past a few MB execCommand just returns false outright (measured ~7s and a
+// hard failure on a ~5MB selection) — writeText handles the same payload in ~20ms, so above
+// LARGE_COPY_CHARS it's tried first instead, falling back to execCommand only if writeText is
+// unavailable (still the only option on file://).
+const LARGE_COPY_CHARS = 500000;
+async function writeClipboard(text) {
+  const tryExecCommand = () => {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.setAttribute('readonly', '');
+    ta.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:1px;height:1px;opacity:0;';
+    document.body.appendChild(ta);
+    const prev = document.activeElement;
+    let ok = false;
+    // While this runs, activeElement is the textarea, so the 'copy' listener below bails out
+    // and the browser copies the textarea's contents — no recursion.
+    try { ta.select(); ok = document.execCommand('copy'); }
+    catch (e) { ok = false; }
+    ta.remove();
+    if (prev && prev.focus) prev.focus({ preventScroll: true });
+    return ok;
+  };
+  if (text.length > LARGE_COPY_CHARS) {
+    try { await navigator.clipboard.writeText(text); return true; } catch {}
+    return tryExecCommand();
+  }
+  const ok = tryExecCommand();
+  if (!ok) { try { await navigator.clipboard.writeText(text); return true; } catch { return false; } }
   return ok;
 }
-function copySelection(isCut) { writeClipboard(buildClip(isCut)); }
+async function copySelection(isCut) {
+  const text = buildClip(isCut);
+  if (text === null) return;   // user declined the large-copy confirmation
+  if (!(await writeClipboard(text))) alert('Could not copy to the clipboard — the selection may be too large for this browser.');
+}
 // Ctrl+C when focus is outside the grid (e.g. just after clicking a toolbar button) never
 // reaches the grid's keydown handler. Serve the clipboard from the cell selection here so
 // the copy still works rather than silently leaving stale content behind. Text fields keep
@@ -1815,7 +1840,9 @@ document.addEventListener('copy', e => {
   if (editing || !e.clipboardData) return;
   const ae = document.activeElement;
   if (ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA' || ae.isContentEditable)) return;
-  e.clipboardData.setData('text/plain', buildClip(false));
+  const text = buildClip(false);
+  if (text === null) { e.preventDefault(); return; }   // user declined the large-copy confirmation
+  e.clipboardData.setData('text/plain', text);
   e.preventDefault();
 });
 

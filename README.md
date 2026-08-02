@@ -100,6 +100,7 @@ xdg-open index.html   # Linux
 - Visual styling (fonts, colors, number formats) is applied live in the app but is **not** written into exported `.xlsx`/`.csv` files with the free SheetJS build — exports contain the raw values. Persisting styles to files would require switching the save path to a library like ExcelJS.
 - `.xlsx` files are fully loaded into memory (browsers can't stream a zip archive); the grid renders on demand via virtualization.
 - The PowerShell command bar, AD user import, and ping column features require the optional local command server to be running and connected — the rest of the app works without it.
+- Copying a very large selection (e.g. `Ctrl+A` on a big sheet) asks for confirmation first, since building and writing that much text can take a few seconds.
 
 ## Tech
 
