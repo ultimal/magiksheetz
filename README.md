@@ -29,21 +29,33 @@ A fast, self-contained spreadsheet application that runs entirely in your browse
 - Numeric-looking cells are auto-colored and right-aligned
 
 ### Data
-- **Sort** any column ascending/descending (whole rows move together; the header row stays pinned)
-- **AutoFilter** on the header row — per-column dropdowns with search, value checklists, and sort
-- Insert / delete rows and columns
+- **Sort** any column ascending/descending (whole rows move together; the header row stays pinned), plus an **IP-address-aware sort** for columns of dotted IPv4 addresses (sorts numerically per octet, not as text)
+- **AutoFilter** on the header row — per-column dropdowns with search, value checklists, and sort; paste a comma- or newline-separated list into the filter search box to bulk-select matching values, and repeated searches accumulate instead of replacing the previous selection
+- Insert / delete rows and columns, including `Ctrl`+`Insert` / `Ctrl`+`Delete` to insert/delete the selected row(s) or column(s) without a confirmation prompt
 - Resize rows and columns by dragging header edges
+- **Fill handle** — drag the handle at the corner of the active cell to copy a value across cells or continue a detected series (e.g. `1, 2, 3…` or `Mon, Tue, Wed…`)
+- Copying respects an active filter — only the currently visible (unfiltered) rows are copied, not hidden ones
 - **Cross-sheet lookup / drill-down** — right-click a column to match its values against a column in another sheet; a **+** on each cell inline-expands the matching rows from that sheet
 - **Export / import lookup mappings** — save the workbook's lookup configuration to a JSON file (by sheet + column header name) and re-apply it to a similar workbook
+- **Convert units** — right-click a column → "Convert units…" to rewrite every numeric value in place between data-size units (B/KB/MB/GB/TB/PB, 1024-based) or data-rate units (bps/Kbps/…/Bps/KBps/…, 1000-based)
+
+### PowerShell integration (optional)
+MagikSheetz can talk to a small local **command server** (a PowerShell script in `server/`, see [server/README.md](server/README.md)) that runs commands on your machine and returns the results. It's entirely optional — the app works fully offline without it — and is gated behind a shared token plus an origin allow-list.
+- **PowerShell command bar** — appears next to the formula bar once the server is detected; type a command and press `Enter` to run it on the server and drop the resulting objects into the current sheet as a table (overwriting it)
+- **Import AD users…** — query Active Directory (via the server) for a chosen set of user properties and import the results as a new sheet
+- **Ping column…** — send every value in a column to the server to be pinged, writing reachability/latency either into a new column or overwriting an existing one
+- **Command server settings** (⚙️ toolbar button) — configure the host, port, and auth token used to reach the server; a status indicator shows whether it's currently connected
+- The server itself supports being reached from another machine on your network (`-BindAddress`) or from a copy of MagikSheetz hosted elsewhere like GitHub Pages (`-AllowedOrigins`) — see [server/README.md](server/README.md) for the security tradeoffs before enabling either
 
 ### UX
 - **Frozen, auto-styled header row** and sticky column/row headers
 - **Freeze columns** — right-click a column header → "Freeze columns (through X)" to pin the left columns while scrolling horizontally (independent of the frozen header row)
 - **Virtualized grid** — only the visible rows are rendered, so sheets with tens of thousands of rows stay smooth
-- Click-and-drag selection with edge auto-scroll; drag row/column headers to select whole rows/columns
+- Click-and-drag selection with edge auto-scroll; drag row/column headers to select whole rows/columns; click the top-left corner to select all cells
 - Right-click **context menus** for cells, headers, and sheet tabs
+- Toolbar actions are grouped into dropdowns (File, Clipboard, Alignment, Clear, Insert/delete, Sort, Lookup mappings, PowerShell actions) to keep the bar compact
 - Dracula dark theme throughout
-- A built-in **shortcuts help panel** (hover the `?` at the end of the toolbar)
+- A built-in **shortcuts help panel** (hover the `?` at the end of the toolbar), and an in-app version indicator
 
 ## Usage
 
@@ -72,9 +84,11 @@ xdg-open index.html   # Linux
 | `Ctrl`+`↑` / `↓` | Top / bottom of the current column |
 | `Ctrl`+`Home` / `End` | Go to A1 / last used cell |
 | `Ctrl`+`Space` / `Shift`+`Space` | Select whole column / row |
-| `Ctrl`+`A` | Select all cells |
+| `Ctrl`+`A` / click top-left corner | Select all cells |
 | `Enter` / `F2` / double-click | Edit the active cell |
 | `Delete` / `Backspace` | Clear contents |
+| `Ctrl`+`Insert` | Insert column left / row below the selection |
+| `Ctrl`+`Delete` | Delete the selected row(s)/column(s), no confirmation |
 | `Ctrl`+`C` / `X` / `V` | Copy / Cut / Paste |
 | `Ctrl`+`B` / `I` / `U` | Bold / Italic / Underline |
 | `Ctrl`+`Z` / `Ctrl`+`Y` | Undo / Redo |
@@ -84,12 +98,15 @@ xdg-open index.html   # Linux
 
 - Visual styling (fonts, colors, number formats) is applied live in the app but is **not** written into exported `.xlsx`/`.csv` files with the free SheetJS build — exports contain the raw values. Persisting styles to files would require switching the save path to a library like ExcelJS.
 - `.xlsx` files are fully loaded into memory (browsers can't stream a zip archive); the grid renders on demand via virtualization.
+- The PowerShell command bar, AD user import, and ping column features require the optional local command server to be running and connected — the rest of the app works without it.
 
 ## Tech
 
 - Plain HTML/CSS/JavaScript in one file — no framework, no bundler
 - [SheetJS (xlsx)](https://sheetjs.com) bundled inline for spreadsheet file I/O (works offline)
 - [Dracula](https://draculatheme.com) color palette
+- Optional companion PowerShell command server (`server/magiksheetz-server.ps1`) for the PowerShell-backed features above
+- In-app version indicator (`APP_VERSION` in `index.html`), bumped with each release
 
 ## License
 
