@@ -119,6 +119,9 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
   }
   .tb-menu .tb-item:hover kbd { color: var(--fg); }
   .tb-menu input[type=file] { display: none; }
+  /* ---------- Shared fade/slide-in animation for all popup menus ---------- */
+  .pop-anim { opacity: 0; transform: translateY(-6px); transition: opacity .14s ease, transform .14s ease; pointer-events: none; }
+  .pop-anim.show { opacity: 1; transform: translateY(0); pointer-events: auto; }
   .toolbar2 select {
     border: 1px solid #565968; background: var(--current); color: var(--fg);
     border-radius: 4px; height: 26px; font-size: 12px; flex: 0 0 auto; padding: 0 4px;
@@ -224,14 +227,12 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
   .ps-hist-btn:hover, .ps-hist-btn.open { color: var(--green); background: var(--current); }
   /* Anchored to the screen edge via `right` (not a computed `left`), so it only shifts
      horizontally when its own content actually needs more or less room — never because of
-     where the button happens to sit. Opacity/transform/width all animate. */
+     where the button happens to sit. Opacity/transform come from .pop-anim; width animates too. */
   .ps-hist-menu {
     right: 6px; left: auto; max-height: 260px; overflow: auto;
     max-width: min(440px, calc(100vw - 12px));
-    opacity: 0; transform: translateY(-6px);
     transition: opacity .14s ease, transform .14s ease, width .14s ease;
   }
-  .ps-hist-menu.show { opacity: 1; transform: translateY(0); }
   .ps-hist-menu .tb-item {
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block;
     font-family: Consolas, "Courier New", monospace; font-size: 12px;
@@ -464,7 +465,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
   <!-- File -->
   <span class="tb-group">
     <button class="tb tb-drop" title="File">📁<span class="caret">▾</span></button>
-    <div class="tb-menu">
+    <div class="tb-menu pop-anim">
       <button class="tb-item" id="btnNew" title="New workbook"><span class="i">🆕</span><span>New workbook</span></button>
       <label class="tb-item" id="btnOpen" title="Open .xlsx / .xls / .csv"><span class="i">📂</span><span>Open…</span><input type="file" id="fileInput" accept=".xlsx,.xls,.csv"></label>
       <button class="tb-item" id="btnSaveXlsx" title="Save as .xlsx (all sheets)"><span class="i">💾</span><span>Save as XLSX</span></button>
@@ -474,7 +475,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
   <!-- Clipboard -->
   <span class="tb-group">
     <button class="tb tb-drop" title="Clipboard">📋<span class="caret">▾</span></button>
-    <div class="tb-menu">
+    <div class="tb-menu pop-anim">
       <button class="tb-item" id="btnCut" title="Cut (Ctrl+X)"><span class="i">✂</span><span>Cut <kbd>Ctrl+X</kbd></span></button>
       <button class="tb-item" id="btnCopy" title="Copy (Ctrl+C)"><span class="i">⧉</span><span>Copy <kbd>Ctrl+C</kbd></span></button>
       <button class="tb-item" id="btnPaste" title="Paste (Ctrl+V)"><span class="i">📋</span><span>Paste <kbd>Ctrl+V</kbd></span></button>
@@ -500,7 +501,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
   <!-- Alignment -->
   <span class="tb-group">
     <button class="tb tb-drop" title="Alignment">≡<span class="caret">▾</span></button>
-    <div class="tb-menu">
+    <div class="tb-menu pop-anim">
       <button class="tb-item" id="alignLeft" title="Align left"><span class="i">⯇</span><span>Align left</span></button>
       <button class="tb-item" id="alignCenter" title="Align center"><span class="i">≡</span><span>Align center</span></button>
       <button class="tb-item" id="alignRight" title="Align right"><span class="i">⯈</span><span>Align right</span></button>
@@ -522,7 +523,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
   <!-- Clear -->
   <span class="tb-group">
     <button class="tb tb-drop" title="Clear">🧹<span class="caret">▾</span></button>
-    <div class="tb-menu">
+    <div class="tb-menu pop-anim">
       <button class="tb-item" id="btnClear" title="Clear contents of selected cells"><span class="i">🧹</span><span>Clear contents</span></button>
       <button class="tb-item" id="btnClearFmt" title="Clear formatting"><span class="i">🚫</span><span>Clear formatting</span></button>
     </div>
@@ -531,7 +532,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
   <!-- Cells (insert/delete/sheet) -->
   <span class="tb-group">
     <button class="tb tb-drop" title="Insert / delete rows &amp; columns">⊞<span class="caret">▾</span></button>
-    <div class="tb-menu">
+    <div class="tb-menu pop-anim">
       <button class="tb-item" id="btnAddRow" title="Insert row above selection"><span class="i"><svg viewBox="0 0 16 16" width="16" height="16" fill="none"><rect x="1.5" y="9.5" width="13" height="4" rx="1" fill="currentColor" opacity=".5"/><path d="M8 1.5v5M5.5 4h5" stroke="var(--green)" stroke-width="1.7" stroke-linecap="round"/></svg></span><span>Insert row</span></button>
       <button class="tb-item" id="btnAddCol" title="Insert column left of selection"><span class="i"><svg viewBox="0 0 16 16" width="16" height="16" fill="none"><rect x="9.5" y="1.5" width="4" height="13" rx="1" fill="currentColor" opacity=".5"/><path d="M4 5.5v5M1.5 8h5" stroke="var(--green)" stroke-width="1.7" stroke-linecap="round"/></svg></span><span>Insert column</span></button>
       <button class="tb-item" id="btnDelRow" title="Delete selected row(s)"><span class="i"><svg viewBox="0 0 16 16" width="16" height="16" fill="none"><rect x="1.5" y="9.5" width="13" height="4" rx="1" fill="currentColor" opacity=".5"/><path d="M5.5 4h5" stroke="var(--red)" stroke-width="1.7" stroke-linecap="round"/></svg></span><span>Delete row(s)</span></button>
@@ -542,7 +543,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
   <!-- Sort -->
   <span class="tb-group">
     <button class="tb tb-drop" title="Sort">⇅<span class="caret">▾</span></button>
-    <div class="tb-menu">
+    <div class="tb-menu pop-anim">
       <button class="tb-item" id="btnSortAsc" title="Sort selected column ascending"><span class="i">▲</span><span>Sort A → Z</span></button>
       <button class="tb-item" id="btnSortDesc" title="Sort selected column descending"><span class="i">▼</span><span>Sort Z → A</span></button>
     </div>
@@ -550,7 +551,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
   <!-- Lookup mappings -->
   <span class="tb-group">
     <button class="tb tb-drop" title="Lookup column mappings">🔗<span class="caret">▾</span></button>
-    <div class="tb-menu">
+    <div class="tb-menu pop-anim">
       <button class="tb-item" id="btnExportMap" title="Export lookup column mappings to a file (reuse with similar workbooks)"><span class="i">↧</span><span>Export mappings…</span></button>
       <label class="tb-item" id="btnImportMap" title="Import lookup column mappings from a file"><span class="i">↥</span><span>Import mappings…</span><input type="file" id="mapInput" accept=".json,application/json"></label>
     </div>
@@ -558,7 +559,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
   <!-- PowerShell actions -->
   <span class="tb-group">
     <button class="tb tb-drop" title="PowerShell actions">🖥️<span class="caret">▾</span></button>
-    <div class="tb-menu">
+    <div class="tb-menu pop-anim">
       <button class="tb-item" id="btnAdImport" title="Query Active Directory users and import them into the workbook"><span class="i">🗃️</span><span>Import AD users…</span></button>
       <button class="tb-item" id="btnPingColumn" title="Ping every value in a column and store the result alongside it"><span class="i">📶</span><span>Ping column…</span></button>
     </div>
@@ -603,7 +604,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
              colWidths:{c:px}, numRows, numCols, sortState }
    ===================================================================== */
 
-const APP_VERSION = '1.0.10';
+const APP_VERSION = '1.0.11';
 const MIN_ROWS = 100, MIN_COLS = 26;
 const HEADER_H = 24, ROWHEAD_W = 42;   // column-header height / row-header width (for scroll math)
 let _lastHeadH = 0;                    // cached column-header height for the frozen-row sticky offset
@@ -1572,12 +1573,18 @@ function columnValues(col) {
 }
 
 const filterPop = document.createElement('div');
-filterPop.className = 'filter-pop';
+filterPop.className = 'filter-pop pop-anim';
 document.body.appendChild(filterPop);
-function hideFilterPopup() { filterPop.style.display = 'none'; }
+let filterPopHideTimer = null;
+function hideFilterPopup() {
+  filterPop.classList.remove('show');
+  clearTimeout(filterPopHideTimer);
+  filterPopHideTimer = setTimeout(() => { filterPop.style.display = 'none'; }, 140);
+}
 
 function openFilterPopup(col, x, y) {
   hideMenu();
+  clearTimeout(filterPopHideTimer);
   const sh = S();
   if (!sh.filters) sh.filters = {};
   const values = columnValues(col);
@@ -1685,6 +1692,7 @@ function openFilterPopup(col, x, y) {
   filterPop.style.left = Math.max(2, x) + 'px';
   filterPop.style.top = Math.max(2, y) + 'px';
   search.focus();
+  requestAnimationFrame(() => requestAnimationFrame(() => filterPop.classList.add('show')));
 }
 function afterFilterChange() {
   if (isRowHidden(sel.r)) { sel = { r: 0, c: sel.c }; rangeEnd = { ...sel }; }
@@ -2306,11 +2314,17 @@ async function pasteFromClipboard() {
 document.addEventListener('contextmenu', e => e.preventDefault());
 
 const ctxMenu = document.createElement('div');
-ctxMenu.className = 'ctx-menu';
+ctxMenu.className = 'ctx-menu pop-anim';
 ctxMenu.style.display = 'none';
 document.body.appendChild(ctxMenu);
-function hideMenu() { ctxMenu.style.display = 'none'; }
+let ctxMenuHideTimer = null;
+function hideMenu() {
+  ctxMenu.classList.remove('show');
+  clearTimeout(ctxMenuHideTimer);
+  ctxMenuHideTimer = setTimeout(() => { ctxMenu.style.display = 'none'; }, 140);
+}
 function showMenu(x, y, items) {
+  clearTimeout(ctxMenuHideTimer);
   ctxMenu.innerHTML = '';
   items.forEach(it => {
     if (it.sep) { const s = document.createElement('div'); s.className = 'sep'; ctxMenu.appendChild(s); return; }
@@ -2326,6 +2340,7 @@ function showMenu(x, y, items) {
   if (y + h > window.innerHeight) y = window.innerHeight - h - 4;
   ctxMenu.style.left = Math.max(2, x) + 'px';
   ctxMenu.style.top = Math.max(2, y) + 'px';
+  requestAnimationFrame(() => requestAnimationFrame(() => ctxMenu.classList.add('show')));
 }
 // Close on mousedown (not click): a click on a cell re-renders the grid and
 // removes the element mid-gesture, so no click event is ever dispatched.
@@ -3123,7 +3138,7 @@ psInput.addEventListener('keydown', e => {
 
 const psHistBtn = document.getElementById('psHistBtn');
 const psHistMenu = document.createElement('div');
-psHistMenu.className = 'tb-menu ps-hist-menu';
+psHistMenu.className = 'tb-menu ps-hist-menu pop-anim';
 document.body.appendChild(psHistMenu);
 
 let psHistMenuHideTimer = null;
@@ -3274,7 +3289,15 @@ psInput.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDef
    TOOLBAR DROPDOWN GROUPS
    ===================================================================== */
 const tbGroups = [...document.querySelectorAll('.toolbar2 .tb-group')];
-function closeTbMenus() { tbGroups.forEach(g => { g.querySelector('.tb-menu').style.display = 'none'; g.querySelector('.tb-drop').classList.remove('open'); }); }
+function closeTbMenus() {
+  tbGroups.forEach(g => {
+    const menu = g.querySelector('.tb-menu');
+    menu.classList.remove('show');
+    clearTimeout(menu._hideTimer);
+    menu._hideTimer = setTimeout(() => { menu.style.display = 'none'; }, 140);
+    g.querySelector('.tb-drop').classList.remove('open');
+  });
+}
 tbGroups.forEach(g => {
   const trigger = g.querySelector('.tb-drop'), menu = g.querySelector('.tb-menu');
   trigger.addEventListener('click', e => {
@@ -3282,11 +3305,13 @@ tbGroups.forEach(g => {
     const isOpen = menu.style.display === 'block';
     closeTbMenus();
     if (!isOpen) {
+      clearTimeout(menu._hideTimer);
       menu.style.display = 'block';
       const r = trigger.getBoundingClientRect(), w = menu.offsetWidth;
       menu.style.left = Math.max(4, Math.min(r.left, window.innerWidth - w - 4)) + 'px';
       menu.style.top = (r.bottom + 3) + 'px';
       trigger.classList.add('open');
+      requestAnimationFrame(() => requestAnimationFrame(() => menu.classList.add('show')));
     }
   });
   menu.addEventListener('click', () => closeTbMenus());   // close after an item's action runs
