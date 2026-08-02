@@ -608,7 +608,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
              colWidths:{c:px}, numRows, numCols, sortState }
    ===================================================================== */
 
-const APP_VERSION = '1.0.12';
+const APP_VERSION = '1.0.13';
 const MIN_ROWS = 100, MIN_COLS = 26;
 const HEADER_H = 24, ROWHEAD_W = 42;   // column-header height / row-header width (for scroll math)
 let _lastHeadH = 0;                    // cached column-header height for the frozen-row sticky offset
@@ -2288,7 +2288,7 @@ function renderRecentFilesMenu() {
   recentFiles.forEach(r => {
     const btn = document.createElement('button');
     btn.className = 'tb-item recent-item'; btn.title = r.name;
-    btn.innerHTML = `<span class="i">${r.kind === 'save' ? '💾' : '📂'}</span><span>${escapeHtml(r.name)}</span>`;
+    btn.innerHTML = `<span class="i">📄</span><span>${escapeHtml(r.name)}</span>`;
     btn.onclick = () => openRecent(r);
     el.appendChild(btn);
   });
