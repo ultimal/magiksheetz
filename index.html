@@ -219,7 +219,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
   .ps-input:disabled { opacity: .6; }
   .ps-hist-btn {
     flex: 0 0 auto; border: none; border-left: 1px solid var(--border); background: none;
-    color: var(--comment); cursor: pointer; padding: 5px 7px; font-size: 9px;
+    color: var(--comment); cursor: pointer; padding: 5px 10px; font-size: 15px; line-height: 1;
   }
   .ps-hist-btn:hover, .ps-hist-btn.open { color: var(--green); background: var(--current); }
   .ps-hist-menu { max-height: 260px; overflow: auto; min-width: 260px; max-width: 440px; }
@@ -594,7 +594,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
              colWidths:{c:px}, numRows, numCols, sortState }
    ===================================================================== */
 
-const APP_VERSION = '1.0.7';
+const APP_VERSION = '1.0.8';
 const MIN_ROWS = 100, MIN_COLS = 26;
 const HEADER_H = 24, ROWHEAD_W = 42;   // column-header height / row-header width (for scroll math)
 let _lastHeadH = 0;                    // cached column-header height for the frozen-row sticky offset
