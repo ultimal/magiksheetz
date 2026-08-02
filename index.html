@@ -222,7 +222,16 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
     color: var(--comment); cursor: pointer; padding: 5px 10px; font-size: 15px; line-height: 1;
   }
   .ps-hist-btn:hover, .ps-hist-btn.open { color: var(--green); background: var(--current); }
-  .ps-hist-menu { max-height: 260px; overflow: auto; min-width: 260px; max-width: 440px; }
+  /* Anchored to the screen edge via `right` (not a computed `left`), so it only shifts
+     horizontally when its own content actually needs more or less room — never because of
+     where the button happens to sit. Opacity/transform/width all animate. */
+  .ps-hist-menu {
+    right: 6px; left: auto; max-height: 260px; overflow: auto;
+    min-width: 260px; max-width: min(440px, calc(100vw - 12px));
+    opacity: 0; transform: translateY(-6px);
+    transition: opacity .14s ease, transform .14s ease, width .14s ease;
+  }
+  .ps-hist-menu.show { opacity: 1; transform: translateY(0); }
   .ps-hist-menu .tb-item {
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block;
     font-family: Consolas, "Courier New", monospace; font-size: 12px;
@@ -594,7 +603,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
              colWidths:{c:px}, numRows, numCols, sortState }
    ===================================================================== */
 
-const APP_VERSION = '1.0.8';
+const APP_VERSION = '1.0.9';
 const MIN_ROWS = 100, MIN_COLS = 26;
 const HEADER_H = 24, ROWHEAD_W = 42;   // column-header height / row-header width (for scroll math)
 let _lastHeadH = 0;                    // cached column-header height for the frozen-row sticky offset
@@ -3117,8 +3126,15 @@ const psHistMenu = document.createElement('div');
 psHistMenu.className = 'tb-menu ps-hist-menu';
 document.body.appendChild(psHistMenu);
 
-function closePsHistMenu() { psHistMenu.style.display = 'none'; psHistBtn.classList.remove('open'); }
+let psHistMenuHideTimer = null;
+function closePsHistMenu() {
+  psHistMenu.classList.remove('show');
+  psHistBtn.classList.remove('open');
+  clearTimeout(psHistMenuHideTimer);
+  psHistMenuHideTimer = setTimeout(() => { psHistMenu.style.display = 'none'; }, 140);
+}
 function openPsHistMenu() {
+  clearTimeout(psHistMenuHideTimer);
   psHistMenu.innerHTML = '';
   if (!psHistory.length) {
     const empty = document.createElement('div'); empty.className = 'tb-empty'; empty.textContent = 'No commands run yet';
@@ -3138,11 +3154,11 @@ function openPsHistMenu() {
     psHistMenu.appendChild(clearBtn);
   }
   psHistMenu.style.display = 'block';
+  // Anchored to the screen edge via CSS `right`; only `top` needs computing here.
   const r = psHistBtn.getBoundingClientRect();
-  const w = psHistMenu.offsetWidth;
-  psHistMenu.style.left = Math.max(4, Math.min(r.right - w, window.innerWidth - w - 4)) + 'px';
   psHistMenu.style.top = (r.bottom + 3) + 'px';
   psHistBtn.classList.add('open');
+  requestAnimationFrame(() => requestAnimationFrame(() => psHistMenu.classList.add('show')));
 }
 psHistBtn.addEventListener('click', e => {
   e.stopPropagation();
