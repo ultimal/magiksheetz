@@ -41,7 +41,7 @@ A fast, self-contained spreadsheet application that runs entirely in your browse
 
 ### PowerShell integration (optional)
 MagikSheetz can talk to a small local **command server** (a PowerShell script in `server/`, see [server/README.md](server/README.md)) that runs commands on your machine and returns the results. It's entirely optional — the app works fully offline without it — and is gated behind a shared token plus an origin allow-list.
-- **PowerShell command bar** — appears next to the formula bar once the server is detected; type a command and press `Enter` to run it on the server and drop the resulting objects into the current sheet as a table (overwriting it)
+- **PowerShell command bar** — appears next to the formula bar once the server is detected; type a command and press `Enter` to run it on the server and drop the resulting objects into the current sheet as a table (overwriting it). `↑`/`↓` recall previous commands (persisted locally), and the dropdown arrow at the end of the bar lists command history to pick and rerun
 - **Import AD users…** — query Active Directory (via the server) for a chosen set of user properties and import the results as a new sheet
 - **Ping column…** — send every value in a column to the server to be pinged, writing reachability/latency either into a new column or overwriting an existing one
 - **Command server settings** (⚙️ toolbar button) — configure the host, port, and auth token used to reach the server; a status indicator shows whether it's currently connected

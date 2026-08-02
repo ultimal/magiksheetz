@@ -217,6 +217,18 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
   }
   .ps-input::placeholder { color: var(--comment); }
   .ps-input:disabled { opacity: .6; }
+  .ps-hist-btn {
+    flex: 0 0 auto; border: none; border-left: 1px solid var(--border); background: none;
+    color: var(--comment); cursor: pointer; padding: 5px 7px; font-size: 9px;
+  }
+  .ps-hist-btn:hover, .ps-hist-btn.open { color: var(--green); background: var(--current); }
+  .ps-hist-menu { max-height: 260px; overflow: auto; min-width: 260px; max-width: 440px; }
+  .ps-hist-menu .tb-item {
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block;
+    font-family: Consolas, "Courier New", monospace; font-size: 12px;
+  }
+  .ps-hist-menu .tb-sep { height: 1px; background: var(--border); margin: 4px 2px; }
+  .ps-hist-menu .tb-empty { padding: 8px 12px; color: var(--comment); font-size: 12px; }
   .ps-status {
     padding: 5px 8px; font-size: 11.5px; white-space: nowrap; align-self: center; max-width: 40%;
     overflow: hidden; text-overflow: ellipsis; flex-shrink: 0;
@@ -555,6 +567,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
   <div class="ps-bar" id="psBar">
     <span class="ps-icon" title="Runs on the connected command server; the result overwrites the current sheet">PS&gt;</span>
     <input class="ps-input" id="psInput" spellcheck="false" placeholder="PowerShell command… Enter to run (overwrites this sheet), e.g. Get-Process">
+    <button class="ps-hist-btn" id="psHistBtn" title="Command history" tabindex="-1">▾</button>
     <span class="ps-status" id="psStatus"></span>
   </div>
 </div>
@@ -581,7 +594,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
              colWidths:{c:px}, numRows, numCols, sortState }
    ===================================================================== */
 
-const APP_VERSION = '1.0.4';
+const APP_VERSION = '1.0.5';
 const MIN_ROWS = 100, MIN_COLS = 26;
 const HEADER_H = 24, ROWHEAD_W = 42;   // column-header height / row-header width (for scroll math)
 let _lastHeadH = 0;                    // cached column-header height for the frozen-row sticky offset
@@ -3061,6 +3074,81 @@ function setPsStatus(text, cls) {
   if (cls === 'ok') psStatusTimer = setTimeout(() => { psStatus.textContent = ''; psStatus.className = 'ps-status'; }, 4000);
 }
 
+/* ---- command history: Up/Down-arrow recall, plus a dropdown to pick and rerun ---- */
+const PS_HISTORY_KEY = 'magiksheetz.psHistory';
+function loadPsHistory() {
+  try { const a = JSON.parse(localStorage.getItem(PS_HISTORY_KEY)); return Array.isArray(a) ? a : []; }
+  catch { return []; }
+}
+function savePsHistory() { localStorage.setItem(PS_HISTORY_KEY, JSON.stringify(psHistory)); }
+let psHistory = loadPsHistory();
+let psHistPos = psHistory.length;   // index currently shown; === length means "not browsing" (draft line)
+let psDraft = '';                   // draft text saved when Up-arrow browsing starts, restored on Down past the end
+
+function pushPsHistory(cmd) {
+  if (psHistory[psHistory.length - 1] !== cmd) {
+    psHistory.push(cmd);
+    if (psHistory.length > 50) psHistory.shift();
+    savePsHistory();
+  }
+  psHistPos = psHistory.length;
+  psDraft = '';
+}
+
+psInput.addEventListener('keydown', e => {
+  if (e.key === 'ArrowUp') {
+    if (!psHistory.length) return;
+    e.preventDefault();
+    if (psHistPos === psHistory.length) psDraft = psInput.value;
+    psHistPos = Math.max(0, psHistPos - 1);
+    psInput.value = psHistory[psHistPos];
+  } else if (e.key === 'ArrowDown') {
+    if (psHistPos >= psHistory.length) return;
+    e.preventDefault();
+    psHistPos++;
+    psInput.value = psHistPos === psHistory.length ? psDraft : psHistory[psHistPos];
+  }
+});
+
+const psHistBtn = document.getElementById('psHistBtn');
+const psHistMenu = document.createElement('div');
+psHistMenu.className = 'tb-menu ps-hist-menu';
+document.body.appendChild(psHistMenu);
+
+function closePsHistMenu() { psHistMenu.style.display = 'none'; psHistBtn.classList.remove('open'); }
+function openPsHistMenu() {
+  psHistMenu.innerHTML = '';
+  if (!psHistory.length) {
+    const empty = document.createElement('div'); empty.className = 'tb-empty'; empty.textContent = 'No commands run yet';
+    psHistMenu.appendChild(empty);
+  } else {
+    for (let i = psHistory.length - 1; i >= 0; i--) {   // most recent first
+      const cmd = psHistory[i];
+      const btn = document.createElement('button');
+      btn.className = 'tb-item'; btn.title = cmd; btn.textContent = cmd;
+      btn.onclick = () => { closePsHistMenu(); psInput.value = cmd; runPsBarCommand(); };
+      psHistMenu.appendChild(btn);
+    }
+    const sep = document.createElement('div'); sep.className = 'tb-sep'; psHistMenu.appendChild(sep);
+    const clearBtn = document.createElement('button');
+    clearBtn.className = 'tb-item'; clearBtn.textContent = '✕ Clear history';
+    clearBtn.onclick = () => { psHistory = []; savePsHistory(); psHistPos = 0; psDraft = ''; closePsHistMenu(); };
+    psHistMenu.appendChild(clearBtn);
+  }
+  psHistMenu.style.display = 'block';
+  const r = psHistBtn.getBoundingClientRect();
+  const w = psHistMenu.offsetWidth;
+  psHistMenu.style.left = Math.max(4, Math.min(r.right - w, window.innerWidth - w - 4)) + 'px';
+  psHistMenu.style.top = (r.bottom + 3) + 'px';
+  psHistBtn.classList.add('open');
+}
+psHistBtn.addEventListener('click', e => {
+  e.stopPropagation();
+  if (psHistMenu.style.display === 'block') closePsHistMenu(); else openPsHistMenu();
+});
+document.addEventListener('mousedown', e => { if (!psHistMenu.contains(e.target) && e.target !== psHistBtn) closePsHistMenu(); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closePsHistMenu(); });
+
 /* Runs the user's command server-side and, for each output object, picks the same
    columns Format-Table would show by default (its DefaultDisplayPropertySet — the
    set Select-Object also stamps onto its output) rather than dumping every property.
@@ -3102,6 +3190,7 @@ try {
 async function runPsBarCommand() {
   const cmdText = psInput.value.trim();
   if (!cmdText) return;
+  pushPsHistory(cmdText);
   psInput.disabled = true;
   setPsStatus('Running…');
 
