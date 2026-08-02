@@ -581,7 +581,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
              colWidths:{c:px}, numRows, numCols, sortState }
    ===================================================================== */
 
-const APP_VERSION = '1.0.3';
+const APP_VERSION = '1.0.4';
 const MIN_ROWS = 100, MIN_COLS = 26;
 const HEADER_H = 24, ROWHEAD_W = 42;   // column-header height / row-header width (for scroll math)
 let _lastHeadH = 0;                    // cached column-header height for the frozen-row sticky offset
@@ -1336,21 +1336,24 @@ function extendFromPointer(clientX, clientY) {
     fillPreview = next;
     return !same;
   }
+  // sel tracks the pointer (the "active" cell: name box, formula bar, and the bordered
+  // selected-cell box all read from it) while rangeEnd stays pinned to the drag's start,
+  // so the active-cell indicator moves to the drag's end instead of sitting at its origin.
   if (dragMode === 'col') {
     const c = colFromPoint(clientX);
     if (c == null) return false;
-    sel = { r: 0, c: anchorCol }; rangeEnd = { r: S().numRows - 1, c };
+    rangeEnd = { r: S().numRows - 1, c: anchorCol }; sel = { r: 0, c };
     return true;
   }
   if (dragMode === 'row') {
     const r = rowFromPoint(clientY);
     if (r == null) return false;
-    sel = { r: anchorRow, c: 0 }; rangeEnd = { r, c: S().numCols - 1 };
+    rangeEnd = { r: anchorRow, c: S().numCols - 1 }; sel = { r, c: 0 };
     return true;
   }
   const cell = cellFromPoint(clientX, clientY);
   if (!cell) return false;
-  rangeEnd = cell;
+  sel = cell;
   return true;
 }
 function autoScrollStep() {
